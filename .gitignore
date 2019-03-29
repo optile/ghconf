@@ -1,0 +1,14 @@
+syntax: glob
+*.pyc
+*.pyo
+*.pyd
+*.iml
+*.swp
+.project
+.pydevproject
+.settings
+.idea
+.mypy_cache
+dist
+*.egg-info
+*.iml
