@@ -1,15 +1,24 @@
 ghconf
 ======
 
-This tool applies common GitHub configuration to a whole organization. It
-currently supports Github teams and Github organizations (currently requires
-an `unreleased version of PyGithub <pygithubpr_>`__).
+This tool applies common Github configuration to a whole organization. It
+currently supports Github teams and Github repositories. It currently requires
+an `unreleased version of PyGithub <pygithubpr_>`__.
 
-* The configuration for this tool is passed as a Python module in its
-  parameters.
+You can use ghconf, for example,
+
+* to declaratively set up your Github organization's team memberships,
+  team hierarchy and permissions
+* enforce configuration across all of your repositories, including 
+  pull-request rules, permissions and Github features.
+  
+ALl of this is done by writing down all configuration as a Python module and
+passing it as a command-line parameter.
+
 * The config module must have a variable ``entry_point`` that is either a
   class, a list of classes, an instance or a list of instances of subclasses of
-  ``GHConfModuleDef``.
+  ``GHConfModuleDef``. By implementing subclasses of ``GHConfModuleDef`` you
+  can pretty much achieve anything.
 * GHConf provides two configurable implementations of ``GHConfModuleDef``
   which should cover most use-cases. ``RepositoriesConfig`` for setting up
   your company's policies on all repositories and ``TeamsConfig`` to set up
@@ -32,13 +41,13 @@ Usage
 
     ghconf is a tool that parses declarative configuration files in a Python
     DSL and then runs Python modules against a preconfigured PyGithub instance.
-    This allows us to apply common GitHub configuration through GitHub's v3
+    This allows us to apply common Github configuration through Github's v3
     REST API to all repositories that are part of our organization.
 
     optional arguments:
       -h, --help            show this help message and exit
       -o ORG, --organization ORG
-                            The GitHub organization to run against. The GitHub
+                            The Github organization to run against. The Github
                             API token must have write access to this
                             organization.
       -r REPOS, --repo REPOS
@@ -56,8 +65,8 @@ Usage
       --no-org-changes      When set, ghconf will not execute org level
                             changes.
       --github-token GITHUB_TOKEN
-                            A GitHub API token for the user specified through
-                            '--github-user' to use for accessing the GitHub
+                            A Github API token for the user specified through
+                            '--github-user' to use for accessing the Github
                             API.
                             (Envvar: GITHUB_TOKEN)
       --module MODULES      Specify Python modules as configuration that will
@@ -76,8 +85,8 @@ Usage
                             If this is not set, ghconf will ask for permission
                             before executing any changes.
 
-Example
--------
+Usage Example
+-------------
 
 .. code:: shell
 
@@ -91,8 +100,8 @@ Example
     ghconf/bin/python -m ghconf.main -o optile --module optile --plan
 
 
-Policies
---------
+Policy implementations
+----------------------
 
 GHConf's default implementations calculate differences between the provided
 configuration module and the current state of your organization's Github relies
@@ -101,8 +110,8 @@ differences between the configuration and the current state intact) and
 ``OVERWRITE`` (enforce the configuration).
 
 
-Team Configuration
-------------------
+Team Configuration Example
+--------------------------
 
 .. code:: python
 
@@ -146,8 +155,8 @@ Team Configuration
     GhConfTestApplyTeams = TeamsConfig(config)
 
 
-Repository Configuration
-------------------------
+Repository Configuration Example
+--------------------------------
 
 .. code:: python
 
