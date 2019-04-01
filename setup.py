@@ -57,6 +57,6 @@ setup(
     author="Jonas Maurus (@jdelic)",
     author_email="jonas.maurus@optile.net",
     license="MIT",
-    description="Apply common GitHub configuration to a whole organization via the GitHub API",
+    description="Apply common Github configuration to a whole organization via the Github API",
     long_description=long_description,
 )
