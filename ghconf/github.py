@@ -95,13 +95,10 @@ class DryRunException(Exception):
 
 @aspectlib.Aspect(bind=True)
 def enforce_dryrun(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    if cutpoint.__name__.startswith("edit") or cutpoint.__name__.startswith("remove") or \
-            cutpoint.__name__.startswith("create") or cutpoint.__name__.startswith("replace"):
-        raise DryRunException("While in dryrun mode, a module tried to call '%s'. Inspect the stack trace to find out "
-                              "who. If the call is ok, add an exception to ghconf.github.enforce_dryrun" %
-                              cutpoint.__name__)
-    else:
-        yield aspectlib.Proceed
+    raise DryRunException("While in dryrun mode, a module tried to call '%s'. Inspect the stack trace to find out "
+                          "who. If the call is ok, add an exception to ghconf.github.enforce_dryrun" %
+                          cutpoint.__name__)
+    yield
 
 
 def checked_weave(*args: Any, **kwargs: Any) -> None:
