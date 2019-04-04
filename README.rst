@@ -12,7 +12,7 @@ You can use ghconf, for example,
 * enforce configuration across all of your repositories, including 
   pull-request rules, permissions and GitHub features.
   
-ALl of this is done by writing down all configuration as a Python module and
+All of this is done by writing down all configuration as a Python module and
 passing it as a command-line parameter.
 
 * The config module must have a variable ``entry_point`` that is either a
