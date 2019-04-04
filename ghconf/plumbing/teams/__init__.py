@@ -95,7 +95,7 @@ class Team:
         return all
 
     def get_subteam_members(self, top: bool = True) -> Set[BaseMember]:
-        # we can't trust self._members, since Github returns all members (including subteams)
+        # we can't trust self._members, since GitHub returns all members (including subteams)
         if top:
             all = set()  # type: Set[BaseMember]
         else:

@@ -194,7 +194,7 @@ def _protect_branch(branch: Branch, required_review_count: int) -> List[Change[s
     prot = None
     current_reqcount = 0
 
-    # The Github API will gladly return a required review count > 0 for a branch that had a required review
+    # The GitHub API will gladly return a required review count > 0 for a branch that had a required review
     # count previously, but it has now been turned off. So we need to correlate a bunch of information to find
     # out whether the branch actually requires reviews or not.
     if branch.protected:

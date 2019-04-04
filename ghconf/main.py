@@ -165,11 +165,11 @@ def main() -> None:
 
     parser = ArgumentParser(description="ghconf is a tool that parses declarative configuration files in a Python DSL "
                                         "and then runs Python modules against a preconfigured PyGithub instance. This "
-                                        "allows us to apply common Github configuration through Github's v3 REST API "
+                                        "allows us to apply common GitHub configuration through GitHub's v3 REST API "
                                         "to all repositories that are part of our organization.")
 
     parser.add_argument("-o", "--organization", dest="org", default="optile",
-                        help="The Github organization to run against. The Github API token must have write access to "
+                        help="The GitHub organization to run against. The GitHub API token must have write access to "
                              "this organization.")
     parser.add_argument("-r", "--repo", dest="repos", action="append", default=[],
                         help="Specify one or more repositories to run the configuration against. (Optional. If not "
@@ -183,8 +183,8 @@ def main() -> None:
     parser.add_argument("--no-org-changes", dest="skip_org_changes", action="store_true", default=False,
                         help="When set, ghconf will not execute org level changes.")
     parser.add_argument("--github-token", dest="github_token", default=None,
-                        help="A Github API token for the user specified through '--github-user' to use for accessing "
-                             "the Github API. (Envvar: GITHUB_TOKEN)")
+                        help="A GitHub API token for the user specified through '--github-user' to use for accessing "
+                             "the GitHub API. (Envvar: GITHUB_TOKEN)")
     parser.add_argument("--module", dest="modules", action="append", default=[], required=True,
                         help="Specify Python modules as configuration that will be imported by ghconf.")
     parser.add_argument("--debug", dest="debug", action="store_true", default=False,
@@ -232,10 +232,10 @@ def main() -> None:
             pass
 
     try:
-        print_debug("Initialize Github API, load organization")
+        print_debug("Initialize GitHub API, load organization")
         org = ghcgithub.gh.get_organization(args.org)  # type: Organization
     except GithubException:
-        raise utils.ErrorMessage("No such Github organization %s for the given API token" % args.org)
+        raise utils.ErrorMessage("No such GitHub organization %s for the given API token" % args.org)
 
     if args.plan:
         # banner

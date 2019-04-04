@@ -15,7 +15,7 @@ ST = TypeVar('ST')
 
 class Policy(Generic[ST]):
     """
-    A object that represents whether a configuration should be "patched" through the Github REST API, leaving
+    A object that represents whether a configuration should be "patched" through the GitHub REST API, leaving
     currently existing configuration intact, or "overwritten", only leaving what is explicitly configured.
     """
     EXTEND = "extend"
@@ -117,7 +117,7 @@ EXTEND = Policy(intention=Policy.EXTEND)  # type: Policy[Any]
 
 class Role:
     """
-    All Github roles for syntax completion
+    All GitHub roles for syntax completion
     """
     OWNER = "owner"
     ADMIN = "admin"

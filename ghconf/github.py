@@ -42,7 +42,7 @@ def waittick(second: int, wait: int) -> None:
 
 # ----
 # Aspect-oriented programming in Python??! I finally found a use for it! :). This module proxies PyGithub to
-# manage rate-limiting across all Github APIs.
+# manage rate-limiting across all GitHub APIs.
 # ----
 
 
@@ -77,13 +77,13 @@ def retry_on_server_failure(cutpoint: Callable[..., Any], *args: Any, **kwargs: 
                 break
             except GithubException as e:
                 if e.status >= 500:
-                    print_info("Received a server error %s from Github. Retry %s/3" % (str(e.status), str(i + 1)))
+                    print_info("Received a server error %s from GitHub. Retry %s/3" % (str(e.status), str(i + 1)))
                     time.sleep(1)
                     continue
                 elif e.status == 404:
                     raise
                 else:
-                    print_error("Received server error %s from Github. Won't retry." % str(e.status))
+                    print_error("Received server error %s from GitHub. Won't retry." % str(e.status))
                     raise
         else:
             raise ErrorMessage("3 retries didn't yield results. Exiting.")
@@ -116,7 +116,7 @@ def checked_weave(*args: Any, **kwargs: Any) -> None:
                 # sometimes weaving accesses properties on objects which then trigger network requests (yes, really),
                 # and then sometimes the buffer in check_rate_limits isn't enough and we get rate limited. In that
                 # case, we end up here. You could ask: "Why don't you just handle this exception instead of calling
-                # check_rate_limits() all the time?" and the answer is: Github seems to penalize tokens that run
+                # check_rate_limits() all the time?" and the answer is: GitHub seems to penalize tokens that run
                 # into the API limit instead of throttling beforehand, so we try to be good.
                 if kwargs.get("_nested", False):
                     check_rate_limits()
@@ -125,13 +125,13 @@ def checked_weave(*args: Any, **kwargs: Any) -> None:
                     raise ErrorMessage("We seem to have been rate-limited after trying to outwait the rate limit")
             except GithubException as e:
                 if e.status >= 500:
-                    print_info("Received a server error %s from Github. Retry %s/3" % (str(e.status), str(i + 1)))
+                    print_info("Received a server error %s from GitHub. Retry %s/3" % (str(e.status), str(i + 1)))
                     time.sleep(1)
                     continue
                 elif e.status == 404:
                     raise
                 else:
-                    print_error("Received server error %s from Github. Won't retry." % str(e.status))
+                    print_error("Received server error %s from GitHub. Won't retry." % str(e.status))
                     raise
             else:
                 break

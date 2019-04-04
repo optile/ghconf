@@ -80,14 +80,14 @@ class ChangeStates(ChangeState):
     SKIPPED = ChangeState("skipped")  # no changes were necessary
 
 
-# this type of callable can apply a change to an Github organization or repo
+# this type of callable can apply a change to an GitHub organization or repo
 executor_t = Callable[..., 'Change[Any]']
 
 
 class ChangeMetadata:
     """
     A wrapper for the metadata necessary to execute a Change. For example: "What team will be the
-    parent of the subteam we're adding?". ``context`` should contain any necessary Github API objects
+    parent of the subteam we're adding?". ``context`` should contain any necessary GitHub API objects
     to make the change.
     :param executor: A callable that, given a PyGithub instance, the Change and it's metadata can execute the Change.
     :param context: A freeform dict of stuff. The executor needs to know what all of it means.
@@ -105,9 +105,9 @@ CT = TypeVar('CT')
 
 class Change(Generic[CT]):
     """
-    Is meant to hold a computed change, ie. a change through the Github API that the script intends to make.
+    Is meant to hold a computed change, ie. a change through the GitHub API that the script intends to make.
     Calling the executor from the ``Change.meta`` together with the Change instance and it's context should
-    perform the change on the Github API.
+    perform the change on the GitHub API.
     """
     def __init__(self, meta: ChangeMetadata, action: ChangeAction, cosmetic_prefix: str = "",
                  before: Optional[CT] = None,

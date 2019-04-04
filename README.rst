@@ -1,16 +1,16 @@
 ghconf
 ======
 
-This tool applies common Github configuration to a whole organization. It
-currently supports Github teams and Github repositories. It currently requires
+This tool applies common GitHub configuration to a whole organization. It
+currently supports GitHub teams and GitHub repositories. It currently requires
 an `unreleased version of PyGithub <pygithubpr_>`__.
 
 You can use ghconf, for example,
 
-* to declaratively set up your Github organization's team memberships,
+* to declaratively set up your GitHub organization's team memberships,
   team hierarchy and permissions
 * enforce configuration across all of your repositories, including 
-  pull-request rules, permissions and Github features.
+  pull-request rules, permissions and GitHub features.
   
 ALl of this is done by writing down all configuration as a Python module and
 passing it as a command-line parameter.
@@ -41,13 +41,13 @@ Usage
 
     ghconf is a tool that parses declarative configuration files in a Python
     DSL and then runs Python modules against a preconfigured PyGithub instance.
-    This allows us to apply common Github configuration through Github's v3
+    This allows us to apply common GitHub configuration through GitHub's v3
     REST API to all repositories that are part of our organization.
 
     optional arguments:
       -h, --help            show this help message and exit
       -o ORG, --organization ORG
-                            The Github organization to run against. The Github
+                            The GitHub organization to run against. The GitHub
                             API token must have write access to this
                             organization.
       -r REPOS, --repo REPOS
@@ -65,8 +65,8 @@ Usage
       --no-org-changes      When set, ghconf will not execute org level
                             changes.
       --github-token GITHUB_TOKEN
-                            A Github API token for the user specified through
-                            '--github-user' to use for accessing the Github
+                            A GitHub API token for the user specified through
+                            '--github-user' to use for accessing the GitHub
                             API.
                             (Envvar: GITHUB_TOKEN)
       --module MODULES      Specify Python modules as configuration that will
@@ -104,7 +104,7 @@ Policy implementations
 ----------------------
 
 GHConf's default implementations calculate differences between the provided
-configuration module and the current state of your organization's Github relies
+configuration module and the current state of your organization's GitHub relies
 on ``Policy`` implementations. GHConf provides two policies ``EXTEND`` (leave
 differences between the configuration and the current state intact) and
 ``OVERWRITE`` (enforce the configuration).
