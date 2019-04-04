@@ -3,16 +3,18 @@ import functools
 import time
 import re
 from datetime import datetime, timezone
-from typing import Callable, Any, Optional, cast, Dict
+from inspect import isgenerator
+from typing import Callable, Any, Optional, cast, Dict, Generator
 
-import aspectlib
 from github.GithubException import GithubException, RateLimitExceededException
 from github.GithubObject import GithubObject
-from github.PaginatedList import PaginatedListBase
+from github.PaginatedList import PaginatedList
 from github import Github
 from wrapt import synchronized
 
 from ghconf.utils import print_debug, print_info, print_error, ErrorMessage, ttywrite, highlight, resumebar, suspendbar
+from ghconf.vendor import aspectlib
+
 
 gh = cast(Github, None)  # type: Github
 
@@ -136,21 +138,43 @@ def checked_weave(*args: Any, **kwargs: Any) -> None:
             raise ErrorMessage("3 retries didn't yield results. Exiting.")
 
 
+def _entangle(obj: Any, dry_run: bool = False) -> Any:
+    if isinstance(obj, PaginatedList):
+        print_debug("entangling PaginatedList")
+        checked_weave(obj, handle_rate_limits, methods=["_fetchNextPage", "get_page"])
+        checked_weave(obj, create_recursive_weave_aspect(dry_run), methods=["__getitem__", "__iter__", "reversed"])
+    elif isinstance(obj, GithubObject):
+        print_debug("entangling %s" % obj.__class__.__name__)
+        checked_weave(obj, handle_rate_limits, methods=aspectlib.ALL_METHODS)
+        if dry_run:
+            checked_weave(
+                obj,
+                enforce_dryrun,
+                methods=re.compile(r"(^edit|^remove|^create|^replace|^delete)")
+            )
+        checked_weave(obj, retry_on_server_failure, methods=aspectlib.ALL_METHODS)
+        checked_weave(obj, create_recursive_weave_aspect(dry_run), methods=aspectlib.ALL_METHODS)
+    elif isgenerator(obj):
+        print_debug("entangling generator")
+        def generator_wrapper(gen: Generator[Any, Any, Any]) -> Generator[Any, Any, Any]:
+            item = next(gen)
+            item = _entangle(item, dry_run)
+            yield item
+        return generator_wrapper(obj)
+    elif isinstance(obj, list):
+        print_debug("entangling list")
+        return [_entangle(x) for x in obj]
+    elif isinstance(obj, tuple):
+        print_debug("entangling tuple")
+        return tuple(_entangle(x) for x in obj)
+    return obj
+
+
 def create_recursive_weave_aspect(dry_run: bool = False) -> Any:
     @aspectlib.Aspect(bind=True)
     def recursive_weave(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         ret = yield aspectlib.Proceed
-        if isinstance(ret, GithubObject) or isinstance(ret, PaginatedListBase):
-            checked_weave(ret, handle_rate_limits, methods=aspectlib.ALL_METHODS)
-            if dry_run:
-                checked_weave(
-                    ret,
-                    enforce_dryrun,
-                    methods=re.compile(r"(^edit|^remove|^create|^replace)")
-                )
-            checked_weave(ret, retry_on_server_failure, methods=aspectlib.ALL_METHODS)
-            checked_weave(ret, create_recursive_weave_aspect(dry_run), methods=aspectlib.ALL_METHODS)
-        yield aspectlib.Return(ret)
+        yield aspectlib.Return(_entangle(ret, dry_run))
     return recursive_weave
 
 
