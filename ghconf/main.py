@@ -36,6 +36,7 @@ def assemble_repolist(args: Namespace, org: Organization) -> List[Repository]:
                     raise utils.ErrorMessage("Repository %s not found. At least with this API key." %
                                              utils.highlight(reponame))
 
+        allrepos = list(org.get_repos())
         if args.reporegexes:
             for reporegex in args.reporegexes:
                 try:
@@ -43,7 +44,7 @@ def assemble_repolist(args: Namespace, org: Organization) -> List[Repository]:
                 except error as e:
                     raise utils.ErrorMessage("Not a valid regular expression %s (%s)" %
                                              (utils.highlight(reporegex), str(e)))
-                for repo in org.get_repos():
+                for repo in allrepos:
                     if regex.match(repo.name):
                         repolist.append(repo)
 
