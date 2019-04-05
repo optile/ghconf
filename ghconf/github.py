@@ -100,7 +100,8 @@ def enforce_dryrun(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> A
     raise DryRunException("While in dryrun mode, a module tried to call '%s'. Inspect the stack trace to find out "
                           "who. If the call is ok, add an exception to ghconf.github.enforce_dryrun" %
                           cutpoint.__name__)
-    yield
+    # enforce_dryrun must be a generator... so this is an unreachable yield
+    yield  # type: ignore
 
 
 def checked_weave(*args: Any, **kwargs: Any) -> None:
@@ -140,11 +141,9 @@ def checked_weave(*args: Any, **kwargs: Any) -> None:
 
 def _entangle(obj: Any, dry_run: bool = False) -> Any:
     if isinstance(obj, PaginatedList):
-        print_debug("entangling PaginatedList")
         checked_weave(obj, handle_rate_limits, methods=["_fetchNextPage", "get_page"])
         checked_weave(obj, create_recursive_weave_aspect(dry_run), methods=["__getitem__", "__iter__", "reversed"])
     elif isinstance(obj, GithubObject):
-        print_debug("entangling %s" % obj.__class__.__name__)
         checked_weave(obj, handle_rate_limits, methods=aspectlib.ALL_METHODS)
         if dry_run:
             checked_weave(
@@ -155,18 +154,14 @@ def _entangle(obj: Any, dry_run: bool = False) -> Any:
         checked_weave(obj, retry_on_server_failure, methods=aspectlib.ALL_METHODS)
         checked_weave(obj, create_recursive_weave_aspect(dry_run), methods=aspectlib.ALL_METHODS)
     elif isgenerator(obj):
-        print_debug("entangling generator")
-
         def generator_wrapper(gen: Generator[Any, Any, Any]) -> Generator[Any, Any, Any]:
             item = next(gen)
             item = _entangle(item, dry_run)
             yield item
         return generator_wrapper(obj)
     elif isinstance(obj, list):
-        print_debug("entangling list")
         return [_entangle(x) for x in obj]
     elif isinstance(obj, tuple):
-        print_debug("entangling tuple")
         return tuple(_entangle(x) for x in obj)
     return obj
 
