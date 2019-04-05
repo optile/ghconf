@@ -83,6 +83,9 @@ def assemble_changedict(args: Namespace, org: Organization) -> Dict[str, ChangeS
     capcache = {}  # type: Dict[str, bool]
     repolist = assemble_repolist(args, org)
 
+    if not repolist:
+        return changedict
+
     pbar = None
     repocount = len(repolist)
     repofmt = "{{ix:>{len}}}/{count} Processing repo {{repo}}".format(len=len(str(repocount)), count=str(repocount))
@@ -251,24 +254,25 @@ def main() -> None:
         print_info("=" * (shutil.get_terminal_size()[0] - 15))
 
         repolist = assemble_repolist(args, org)
-        pbar = progressbar(len(repolist) * len(modules))
-        for repo in repolist:
-            branches = list(repo.get_branches())
-            for modulename, moduledef in modules.items():
-                pbar.update()
-                try:
-                    if moduledef.applies_to_repository(org, repo, branches):
-                        repo.ghconf_touched = True
-                        break
-                except NotImplementedError:
-                    continue
-            if not hasattr(repo, "ghconf_touched"):
-                repo.ghconf_touched = False
+        if repolist:
+            pbar = progressbar(len(repolist) * len(modules))
+            for repo in repolist:
+                branches = list(repo.get_branches())
+                for modulename, moduledef in modules.items():
+                    pbar.update()
+                    try:
+                        if moduledef.applies_to_repository(org, repo, branches):
+                            repo.ghconf_touched = True
+                            break
+                    except NotImplementedError:
+                        continue
+                if not hasattr(repo, "ghconf_touched"):
+                    repo.ghconf_touched = False
 
-        for repo in repolist:
-            if not repo.ghconf_touched:
-                print_wrapped(repo.full_name)
-        pbar.close()
+            for repo in repolist:
+                if not repo.ghconf_touched:
+                    print_wrapped(repo.full_name)
+            pbar.close()
     else:
         # banner
         print_info("=" * (shutil.get_terminal_size()[0] - 15))
