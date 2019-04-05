@@ -156,6 +156,7 @@ def _entangle(obj: Any, dry_run: bool = False) -> Any:
         checked_weave(obj, create_recursive_weave_aspect(dry_run), methods=aspectlib.ALL_METHODS)
     elif isgenerator(obj):
         print_debug("entangling generator")
+
         def generator_wrapper(gen: Generator[Any, Any, Any]) -> Generator[Any, Any, Any]:
             item = next(gen)
             item = _entangle(item, dry_run)
