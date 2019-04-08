@@ -1,10 +1,14 @@
 # -* encoding: utf-8 *-
 import functools
+import importlib
+import inspect
 import time
 import re
 from datetime import datetime, timezone
-from inspect import isgenerator
+from types import ModuleType
 from typing import Callable, Any, Optional, cast, Dict, Generator
+
+import github
 
 from github.GithubException import GithubException, RateLimitExceededException
 from github.GithubObject import GithubObject
@@ -13,7 +17,7 @@ from github import Github
 from wrapt import synchronized
 
 from ghconf.utils import print_debug, print_info, print_error, ErrorMessage, ttywrite, highlight, resumebar, suspendbar
-from ghconf.vendor import aspectlib
+import aspectlib
 
 
 gh = cast(Github, None)  # type: Github
@@ -104,85 +108,37 @@ def enforce_dryrun(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> A
     yield  # type: ignore
 
 
-def checked_weave(*args: Any, **kwargs: Any) -> None:
-    for i in range(4):
-        if i < 3:
-            try:
-                aspectlib.weave(*args, **kwargs)
-                # every call to weave can load properties which then can make network requests, so we need to check
-                # rate limits every time :'(
-                check_rate_limits()
-            except RateLimitExceededException:
-                # sometimes weaving accesses properties on objects which then trigger network requests (yes, really),
-                # and then sometimes the buffer in check_rate_limits isn't enough and we get rate limited. In that
-                # case, we end up here. You could ask: "Why don't you just handle this exception instead of calling
-                # check_rate_limits() all the time?" and the answer is: GitHub seems to penalize tokens that run
-                # into the API limit instead of throttling beforehand, so we try to be good.
-                if kwargs.get("_nested", False):
-                    check_rate_limits()
-                    checked_weave(*args, _nested=True, **kwargs)
-                else:
-                    raise ErrorMessage("We seem to have been rate-limited after trying to outwait the rate limit")
-            except GithubException as e:
-                if e.status >= 500:
-                    print_info("Received a server error %s from GitHub. Retry %s/3" % (str(e.status), str(i + 1)))
-                    time.sleep(1)
-                    continue
-                elif e.status == 404:
-                    raise
-                else:
-                    print_error("Received server error %s from GitHub. Won't retry." % str(e.status))
-                    raise
-            else:
-                break
-        else:
-            raise ErrorMessage("3 retries didn't yield results. Exiting.")
-
-
-def _entangle(obj: Any, dry_run: bool = False) -> Any:
-    if isinstance(obj, PaginatedList):
-        checked_weave(obj, handle_rate_limits, methods=["_fetchNextPage", "get_page"])
-        checked_weave(obj, create_recursive_weave_aspect(dry_run), methods=["__getitem__", "__iter__", "reversed"])
-    elif isinstance(obj, GithubObject):
-        checked_weave(obj, handle_rate_limits, methods=aspectlib.ALL_METHODS)
+def weave_magic(cls: type, dry_run: bool = False) -> None:
+    if issubclass(cls, (github.GithubObject.GithubObject, github.PaginatedList.PaginatedList)):
+        aspectlib.weave(cls, [handle_rate_limits, retry_on_server_failure], methods=aspectlib.ALL_METHODS)
         if dry_run:
-            checked_weave(
-                obj,
-                enforce_dryrun,
-                methods=re.compile(r"(^edit|^remove|^create|^replace|^delete)")
-            )
-        checked_weave(obj, retry_on_server_failure, methods=aspectlib.ALL_METHODS)
-        checked_weave(obj, create_recursive_weave_aspect(dry_run), methods=aspectlib.ALL_METHODS)
-    elif isgenerator(obj):
-        def generator_wrapper(gen: Generator[Any, Any, Any]) -> Generator[Any, Any, Any]:
-            item = next(gen)
-            item = _entangle(item, dry_run)
-            yield item
-        return generator_wrapper(obj)
-    elif isinstance(obj, list):
-        return [_entangle(x) for x in obj]
-    elif isinstance(obj, tuple):
-        return tuple(_entangle(x) for x in obj)
-    return obj
+            aspectlib.weave(cls, enforce_dryrun, methods=re.compile(r"(^edit|^remove|^create|^replace)"))
 
 
-def create_recursive_weave_aspect(dry_run: bool = False) -> Any:
-    @aspectlib.Aspect(bind=True)
-    def recursive_weave(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        ret = yield aspectlib.Proceed
-        yield aspectlib.Return(_entangle(ret, dry_run))
-    return recursive_weave
+def patch_tree(root_module: ModuleType, patcher: Callable[[type, bool], None], dry_run: bool = False,
+               path: str = "") -> None:
+    for symbol in dir(root_module):
+        try:
+            sympath = "%s%s" % ("%s." % path, symbol)
+            mod = importlib.import_module(sympath, root_module.__name__)
+        except ModuleNotFoundError:
+            pass
+        else:
+            new_path = "%s%s" % ("%s." % path if path else "", mod.__name__)
+            patch_tree(mod, patcher, dry_run, new_path)
+            continue
+
+        cls = getattr(root_module, symbol)
+        if inspect.isclass(cls):
+            patcher(cls, dry_run)
 
 
 @synchronized
 def init_github(github_token: str, dry_run: bool = False, *args: Any, **kwargs: Any) -> None:
     global gh
 
+    patch_tree(github, weave_magic, dry_run)
+
     if not gh:
         print_debug("Initializing Github instance")
         gh = Github(github_token, *args, **kwargs)
-        checked_weave(gh, handle_rate_limits)
-        if dry_run:
-            checked_weave(gh, enforce_dryrun)
-        checked_weave(gh, retry_on_server_failure)
-        checked_weave(gh, create_recursive_weave_aspect(dry_run))
