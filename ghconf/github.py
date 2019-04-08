@@ -80,6 +80,8 @@ def retry_on_server_failure(cutpoint: Callable[..., Any], *args: Any, **kwargs: 
         if i < 3:
             try:
                 yield aspectlib.Proceed
+                if i > 0:
+                    print_info("Retry successful. Moving on...")
                 break
             except GithubException as e:
                 if e.status >= 500:
@@ -134,7 +136,7 @@ def patch_tree(root_module: ModuleType, patcher: Callable[[type, bool], None], d
 
 
 @synchronized
-def init_github(github_token: str, dry_run: bool = False, *args: Any, **kwargs: Any) -> None:
+def get_github(github_token: str, dry_run: bool = False, *args: Any, **kwargs: Any) -> Github:
     global gh
 
     patch_tree(github, weave_magic, dry_run)
@@ -142,3 +144,5 @@ def init_github(github_token: str, dry_run: bool = False, *args: Any, **kwargs: 
     if not gh:
         print_debug("Initializing Github instance")
         gh = Github(github_token, *args, **kwargs)
+
+    return gh

@@ -229,10 +229,10 @@ class TeamsConfig(GHConfModuleDef):
             print_debug("Unsupported change action for team members: %s" % change.action)
             return change.skipped()
 
-        from ghconf.github import gh
+        from ghconf.github import get_github
         if change.action == ChangeActions.ADD and change.after is not None:
             ghteam = org.get_team(team.id)
-            ghmember = gh.get_user(change.after.username)
+            ghmember = get_github().get_user(change.after.username)
             membership = ghteam.add_membership(ghmember, role=change.after.role)
             if membership.state == "active":
                 print_debug("Added member %s to team %s" % (change.after.username, team.name))
@@ -243,7 +243,7 @@ class TeamsConfig(GHConfModuleDef):
                 return change.failure()
         elif change.action == ChangeActions.REMOVE and change.before is not None:
             ghteam = org.get_team(team.id)
-            ghmember = gh.get_user(change.before.username)
+            ghmember = get_github().get_user(change.before.username)
             if ghteam.remove_membership(ghmember):
                 return change.success()
             else:
@@ -256,17 +256,17 @@ class TeamsConfig(GHConfModuleDef):
             print_warning("Unsupported change action for org admins: %s" % change.action)
             return change.skipped()
 
-        from ghconf.github import gh
+        from ghconf.github import get_github
         if change.action == ChangeActions.ADD and change.after is not None:
             try:
-                user = gh.get_user(change.after.username)
+                user = get_github().get_user(change.after.username)
                 org.add_to_members(user, role="admin")
             except GithubException as e:
                 print_debug("Unable to add admin user %s: %s" % (change.after.username, str(e)))
                 return change.failure()
         elif change.action == ChangeActions.REMOVE and change.before is not None:
             try:
-                user = gh.get_user(change.before.username)
+                user = get_github().get_user(change.before.username)
                 org.remove_from_members(user)
             except GithubException as e:
                 print_debug("Unable to remove admin user %s: %s" % (change.before.username, str(e)))
