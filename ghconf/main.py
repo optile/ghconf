@@ -8,7 +8,7 @@ import sys
 from re import error
 
 from argparse import ArgumentParser, SUPPRESS, Namespace
-from typing import Dict, TypeVar, List
+from typing import Dict, List
 
 from ghconf import utils, github as ghcgithub
 from ghconf.base import GHConfModuleDef, ChangeSet

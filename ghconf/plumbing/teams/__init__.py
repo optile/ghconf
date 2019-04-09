@@ -1,13 +1,13 @@
 # -* encoding: utf-8 *-
-from typing import Union, Any, Dict, List, NamedTuple, Set, Optional
+from typing import Union, Any, Dict, List, Set, Optional
 
 from github.GithubException import GithubException
 from github.Organization import Organization
 from github.Team import Team as GithubTeam
 
 from ghconf import cache
-from ghconf.base import GHConfModuleDef, Change, ChangeSet, ChangeAction, ChangeMetadata, ChangeActions
-from ghconf.primitives import Policy, EXTEND, OVERWRITE, Role
+from ghconf.base import GHConfModuleDef, Change, ChangeSet, ChangeMetadata, ChangeActions
+from ghconf.primitives import Policy, EXTEND, Role
 from ghconf.utils import ErrorMessage, print_debug, print_warning, print_info, print_error, highlight
 
 

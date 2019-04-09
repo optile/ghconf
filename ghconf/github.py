@@ -1,16 +1,15 @@
 # -* encoding: utf-8 *-
-import functools
 import importlib
 import inspect
 import time
 import re
 from datetime import datetime, timezone
 from types import ModuleType
-from typing import Callable, Any, Optional, cast, Dict, Generator
+from typing import Callable, Any,  cast, Dict
 
 import github
 
-from github.GithubException import GithubException, RateLimitExceededException
+from github.GithubException import GithubException
 from github.GithubObject import GithubObject
 from github.PaginatedList import PaginatedList
 from github import Github

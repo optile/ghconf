@@ -12,7 +12,7 @@ from github.Organization import Organization
 from github.BranchProtection import BranchProtection
 from github.Branch import Branch
 
-from ghconf.base import Change, ChangeMetadata, ChangeAction, ChangeActions
+from ghconf.base import Change, ChangeMetadata, ChangeActions
 from ghconf.plumbing.repositories import repoproc_t
 from ghconf.utils import print_debug, highlight, print_error, print_warning
 
