@@ -1,18 +1,23 @@
 # -* encoding: utf-8 *-
-import functools
+import importlib
+import inspect
 import time
 import re
 from datetime import datetime, timezone
-from typing import Callable, Any, Optional, cast, Dict
+from types import ModuleType
+from typing import Callable, Any,  cast, Dict
 
-import aspectlib
-from github.GithubException import GithubException, RateLimitExceededException
+import github
+
+from github.GithubException import GithubException
 from github.GithubObject import GithubObject
-from github.PaginatedList import PaginatedListBase
+from github.PaginatedList import PaginatedList
 from github import Github
 from wrapt import synchronized
 
 from ghconf.utils import print_debug, print_info, print_error, ErrorMessage, ttywrite, highlight, resumebar, suspendbar
+import aspectlib
+
 
 gh = cast(Github, None)  # type: Github
 
@@ -74,6 +79,8 @@ def retry_on_server_failure(cutpoint: Callable[..., Any], *args: Any, **kwargs: 
         if i < 3:
             try:
                 yield aspectlib.Proceed
+                if i > 0:
+                    print_info("Retry successful. Moving on...")
                 break
             except GithubException as e:
                 if e.status >= 500:
@@ -98,71 +105,43 @@ def enforce_dryrun(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> A
     raise DryRunException("While in dryrun mode, a module tried to call '%s'. Inspect the stack trace to find out "
                           "who. If the call is ok, add an exception to ghconf.github.enforce_dryrun" %
                           cutpoint.__name__)
-    yield
+    # enforce_dryrun must be a generator... so this is an unreachable yield
+    yield  # type: ignore
 
 
-def checked_weave(*args: Any, **kwargs: Any) -> None:
-    for i in range(4):
-        if i < 3:
-            try:
-                aspectlib.weave(*args, **kwargs)
-                # every call to weave can load properties which then can make network requests, so we need to check
-                # rate limits every time :'(
-                check_rate_limits()
-            except RateLimitExceededException:
-                # sometimes weaving accesses properties on objects which then trigger network requests (yes, really),
-                # and then sometimes the buffer in check_rate_limits isn't enough and we get rate limited. In that
-                # case, we end up here. You could ask: "Why don't you just handle this exception instead of calling
-                # check_rate_limits() all the time?" and the answer is: GitHub seems to penalize tokens that run
-                # into the API limit instead of throttling beforehand, so we try to be good.
-                if kwargs.get("_nested", False):
-                    check_rate_limits()
-                    checked_weave(*args, _nested=True, **kwargs)
-                else:
-                    raise ErrorMessage("We seem to have been rate-limited after trying to outwait the rate limit")
-            except GithubException as e:
-                if e.status >= 500:
-                    print_info("Received a server error %s from GitHub. Retry %s/3" % (str(e.status), str(i + 1)))
-                    time.sleep(1)
-                    continue
-                elif e.status == 404:
-                    raise
-                else:
-                    print_error("Received server error %s from GitHub. Won't retry." % str(e.status))
-                    raise
-            else:
-                break
+def weave_magic(cls: type, dry_run: bool = False) -> None:
+    if issubclass(cls, (github.GithubObject.GithubObject, github.PaginatedList.PaginatedList)):
+        aspectlib.weave(cls, [handle_rate_limits, retry_on_server_failure], methods=aspectlib.ALL_METHODS)
+        if dry_run:
+            aspectlib.weave(cls, enforce_dryrun, methods=re.compile(r"(^edit|^remove|^create|^replace)"))
+
+
+def patch_tree(root_module: ModuleType, patcher: Callable[[type, bool], None], dry_run: bool = False,
+               path: str = "") -> None:
+    for symbol in dir(root_module):
+        try:
+            sympath = "%s%s" % ("%s." % path, symbol)
+            mod = importlib.import_module(sympath, root_module.__name__)
+        except ModuleNotFoundError:
+            pass
         else:
-            raise ErrorMessage("3 retries didn't yield results. Exiting.")
+            new_path = "%s%s" % ("%s." % path if path else "", mod.__name__)
+            patch_tree(mod, patcher, dry_run, new_path)
+            continue
 
-
-def create_recursive_weave_aspect(dry_run: bool = False) -> Any:
-    @aspectlib.Aspect(bind=True)
-    def recursive_weave(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        ret = yield aspectlib.Proceed
-        if isinstance(ret, GithubObject) or isinstance(ret, PaginatedListBase):
-            checked_weave(ret, handle_rate_limits, methods=aspectlib.ALL_METHODS)
-            if dry_run:
-                checked_weave(
-                    ret,
-                    enforce_dryrun,
-                    methods=re.compile(r"(^edit|^remove|^create|^replace)")
-                )
-            checked_weave(ret, retry_on_server_failure, methods=aspectlib.ALL_METHODS)
-            checked_weave(ret, create_recursive_weave_aspect(dry_run), methods=aspectlib.ALL_METHODS)
-        yield aspectlib.Return(ret)
-    return recursive_weave
+        cls = getattr(root_module, symbol)
+        if inspect.isclass(cls):
+            patcher(cls, dry_run)
 
 
 @synchronized
-def init_github(github_token: str, dry_run: bool = False, *args: Any, **kwargs: Any) -> None:
+def get_github(github_token: str, dry_run: bool = False, *args: Any, **kwargs: Any) -> Github:
     global gh
+
+    patch_tree(github, weave_magic, dry_run)
 
     if not gh:
         print_debug("Initializing Github instance")
         gh = Github(github_token, *args, **kwargs)
-        checked_weave(gh, handle_rate_limits)
-        if dry_run:
-            checked_weave(gh, enforce_dryrun)
-        checked_weave(gh, retry_on_server_failure)
-        checked_weave(gh, create_recursive_weave_aspect(dry_run))
+
+    return gh

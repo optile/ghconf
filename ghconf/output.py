@@ -5,7 +5,7 @@ from typing import Dict
 from colorama import Fore
 
 from ghconf import utils
-from ghconf.base import ChangeSet, ChangeAction, ChangeState, ChangeActions
+from ghconf.base import ChangeSet, ChangeActions
 from ghconf.utils import highlight, progressbar, ttywrite, ANSITextWrapper
 
 

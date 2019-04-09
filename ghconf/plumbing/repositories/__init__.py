@@ -9,10 +9,10 @@ from github.Team import Team as GithubTeam
 from typing import Optional
 
 from ghconf import cache
-from ghconf.base import GHConfModuleDef, ChangeSet, Change, ChangeMetadata, ChangeAction, ChangeActions
+from ghconf.base import GHConfModuleDef, ChangeSet, Change, ChangeMetadata, ChangeActions
 from ghconf.plumbing.teams import Team
 from ghconf.primitives import Policy, OVERWRITE
-from ghconf.utils import highlight, ErrorMessage, print_debug, print_warning, print_error, print_info
+from ghconf.utils import highlight, print_debug, print_error
 
 
 class AccessChangeFactory:

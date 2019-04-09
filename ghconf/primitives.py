@@ -1,9 +1,9 @@
 # -* encoding: utf-8 *-
 
 # Useful primitives for building configuration modules and DSLs.
-from typing import MutableMapping, TypeVar, Dict, Any, Set, List, Generic, Optional, Union, cast
+from typing import TypeVar, Dict, Any, Set, List, Generic, Optional, Union, cast
 
-from ghconf.base import Change, ChangeAction, ChangeMetadata, ChangeActions
+from ghconf.base import Change, ChangeMetadata, ChangeActions
 
 
 class UnknownPolicyIntention(Exception):

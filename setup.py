@@ -34,7 +34,7 @@ _requirements = [
 try:
     long_description = open(os.path.join(_HERE, 'README.rst')).read()
 except IOError:
-    long_description = None
+    long_description = ""
 
 setup(
     name='optile-ghconf',

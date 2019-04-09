@@ -1,8 +1,7 @@
 # -* encoding: utf-8 *-
-import re
 import shutil
 from textwrap import TextWrapper
-from typing import NamedTuple, List, Union, TypeVar, MutableMapping, Any, Optional
+from typing import List, Any, Optional
 from typing import Type
 
 import colorama

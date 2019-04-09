@@ -8,7 +8,7 @@ import sys
 from re import error
 
 from argparse import ArgumentParser, SUPPRESS, Namespace
-from typing import Dict, TypeVar, List
+from typing import Dict, List
 
 from ghconf import utils, github as ghcgithub
 from ghconf.base import GHConfModuleDef, ChangeSet
@@ -222,9 +222,9 @@ def main() -> None:
     utils.enable_progressbar = not args.no_progressbar
 
     if args.github_token:
-        ghcgithub.init_github(args.github_token, dry_run=args.plan)
+        gh = ghcgithub.get_github(args.github_token, dry_run=args.plan)
     elif os.getenv("GITHUB_TOKEN"):
-        ghcgithub.init_github(os.getenv("GITHUB_TOKEN"), dry_run=args.plan)
+        gh = ghcgithub.get_github(os.getenv("GITHUB_TOKEN"), dry_run=args.plan)
     else:
         raise utils.ErrorMessage("'--github-token' or environment variable GITHUB_TOKEN must be set")
 
@@ -237,7 +237,7 @@ def main() -> None:
 
     try:
         print_debug("Initialize GitHub API, load organization")
-        org = ghcgithub.gh.get_organization(args.org)  # type: Organization
+        org = gh.get_organization(args.org)  # type: Organization
     except GithubException:
         raise utils.ErrorMessage("No such GitHub organization %s for the given API token" % args.org)
 
