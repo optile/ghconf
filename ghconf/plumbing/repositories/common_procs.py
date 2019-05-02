@@ -19,6 +19,9 @@ from ghconf.utils import print_debug, highlight, print_error, print_warning
 
 
 def make_develop_default(org: Organization, repo: Repository, branches: Dict[str, Branch]) -> List[Change[str]]:
+    """
+    Makes the ``develop`` branch the default branch on a repo if it exists.
+    """
     def execute_develop_default(change: Change[str], repo: Repository) -> Change[str]:
         print_debug("[%s] Changing default branch to 'develop'" % highlight(repo.name))
         try:
@@ -54,6 +57,9 @@ def __execute_master_default(change: Change[str], repo: Repository) -> Change[st
 
 
 def force_master_default(org: Organization, repo: Repository, branches: Dict[str, Branch]) -> List[Change[str]]:
+    """
+    Makes ``master`` the default branch if it exists
+    """
     if repo.default_branch != 'master' and 'master' in branches and not repo.archived:
         change = Change(
             meta=ChangeMetadata(
@@ -71,6 +77,9 @@ def force_master_default(org: Organization, repo: Repository, branches: Dict[str
 
 def force_master_default_if_no_develop(org: Organization, repo: Repository,
                                        branches: Dict[str, Branch]) -> List[Change[str]]:
+    """
+    Makes ``master`` the default branch on a repo unless ``develop`` exists
+    """
     if repo.default_branch != 'develop' and repo.default_branch != 'master' and not repo.archived:
         if "develop" not in branches and "master" in branches:
             change = Change(
@@ -93,6 +102,9 @@ def force_master_default_if_no_develop(org: Organization, repo: Repository,
 
 
 def get_pr_branch(repo: Repository, branches: Dict[str, Branch]) -> Union[Branch, None]:
+    """
+    Returns the default branch of a repo
+    """
     if repo.default_branch in branches:
         return branches[repo.default_branch]
     else:
@@ -150,6 +162,10 @@ def _set_dismiss_stale_approvals(branch: Branch, dismiss_approvals: bool = True)
 
 def force_pr_branch_stale_review_dismissal(org: Organization, repo: Repository,
                                            branches: Dict[str, Branch]) -> List[Change[str]]:
+    """
+    Sets the flag that existing reviews will be dismissed on changes to PRs on the repo's
+    default branch.
+    """
     prb = get_pr_branch(repo, branches)
     if prb:
         return _set_dismiss_stale_approvals(prb, True)
@@ -158,6 +174,9 @@ def force_pr_branch_stale_review_dismissal(org: Organization, repo: Repository,
 
 
 def force_branch_stale_review_dismissal(branch_name: str) -> repoproc_t:
+    """
+    Sets the flag that existing reviews will be dismissed on changes to PRs on the specified branch.
+    """
     def _force_branch_stale_review_dismissal(org: Organization, repo: Repository,
                                              branches: Dict[str, Branch]) -> List[Change[str]]:
         if branch_name in branches:
@@ -235,6 +254,9 @@ def _protect_branch(branch: Branch, required_review_count: int) -> List[Change[s
 
 
 def protect_pr_branch_with_approvals(count: int = 1) -> repoproc_t:
+    """
+    Requires ``count`` number of reviews on PRs on the repo's default branch/
+    """
     def _protect_pr_branch_with_approvals(org: Organization, repo: Repository,
                                           branches: Dict[str, Branch]) -> List[Change[str]]:
         prb = get_pr_branch(repo, branches)
@@ -246,6 +268,9 @@ def protect_pr_branch_with_approvals(count: int = 1) -> repoproc_t:
 
 
 def protect_branch_with_approvals(branch_name: str, count: int = 1) -> repoproc_t:
+    """
+    Requires ``count`` number of reviews on PRs on the specified branch
+    """
     def _protect_branch_with_approvals(org: Organization, repo: Repository,
                                        branches: Dict[str, Branch]) -> List[Change[str]]:
         if branch_name in branches:
@@ -271,6 +296,10 @@ def safe_branch_edit_protection(branch: Branch, strict: _GithubOptional[bool] = 
                                 required_approving_review_count: _GithubOptional[int] = NotSet,
                                 user_push_restrictions: _GithubOptional[List[str]] = NotSet,
                                 team_push_restrictions: _GithubOptional[List[str]] = NotSet) -> None:
+    """
+    Branch.edit_protection can overwrite existing protections when trying to make incremental
+    changes, so this function makes sure to take existing state into account.
+    """
     try:
         prot = branch.get_protection()
     except GithubException as e:
@@ -312,6 +341,10 @@ def safe_branch_edit_protection(branch: Branch, strict: _GithubOptional[bool] = 
 
 def protect_pr_branch_with_tests_if_any_exist(org: Organization, repo: Repository,
                                               branches: Dict[str, Branch]) -> List[Change[str]]:
+    """
+    If there were any successful status checks ("tests") reported through GitHub's commit status API during the last
+    7 days, make them the new required tests on the repo.
+    """
     def execute_test_protection(change: Change[str], branch: Branch, existing_checks: Set[str],
                                 known_checks: Set[str]) -> Change[str]:
         print_debug("[%s] Changing status checks on branch '%s' to [%s]" %
@@ -373,6 +406,9 @@ def protect_pr_branch_with_tests_if_any_exist(org: Organization, repo: Repositor
 
 def remove_all_status_checks_on_pr_branch(org: Organization, repo: Repository,
                                           branches: Dict[str, Branch]) -> List[Change[str]]:
+    """
+    Remove all required status checks ("tests") from the repo.
+    """
     def execute_remove_all_status_checks(change: Change[str], branch: Branch, existing_checks: Set[str]) -> Change[str]:
         print_debug("Removing all status checks from branch %s" % highlight(branch.name))
         try:
@@ -411,6 +447,10 @@ def remove_all_status_checks_on_pr_branch(org: Organization, repo: Repository,
 
 def set_repo_features(enable_wiki: bool = False, enable_issues: bool = False,
                       enable_projects: bool = False) -> repoproc_t:
+    """
+    As long as they haven't been disabled on the org, set the availability flags for
+    GitHub's wiki, issue tracker or projects on the repo.
+    """
     def _set_repo_features(org: Organization, repo: Repository, branches: Dict[str, Branch]) -> List[Change[str]]:
         def execute_set_repo_features(change: Change[str], repo: Repository,
                                       enable_wiki: Optional[bool] = None,
@@ -475,6 +515,10 @@ def set_repo_features(enable_wiki: bool = False, enable_issues: bool = False,
 
 def remove_all_outside_collaborators(org: Organization, repo: Repository,
                                      branches: Dict[str, Branch]) -> List[Change[NamedUser]]:
+    """
+    Remove all outside collaborators (user accounts that are not also a member of the org) from
+    a repo.
+    """
     def execute_remove_all_outside_collaborators(change: Change[NamedUser], repo: Repository) -> Change[NamedUser]:
         if change.action == ChangeActions.REMOVE:
             print_debug("%s Removing collaborator %s" % (highlight("[%s]" % repo.name), change.before.login))
