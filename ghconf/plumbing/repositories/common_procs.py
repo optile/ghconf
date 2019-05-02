@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 from typing import List, Dict, Union, Set, Optional, TypeVar
 
+from github.NamedUser import NamedUser
 from github.GithubObject import NotSet, _NotSetType
 from github.RequiredPullRequestReviews import RequiredPullRequestReviews
 from github.RequiredStatusChecks import RequiredStatusChecks
@@ -416,7 +417,7 @@ def set_repo_features(enable_wiki: bool = False, enable_issues: bool = False,
                                       enable_issues: Optional[bool] = None,
                                       enable_projects: Optional[bool] = None) -> Change[str]:
             if change.action == ChangeActions.REPLACE:
-                print_debug("[%s] Setting features" % highlight(repo.name))
+                print_debug("%s Setting features" % highlight("[%s]" % repo.name))
                 kw = {
                     'has_wiki': NotSet if enable_wiki is None else enable_wiki,
                     'has_issues': NotSet if enable_issues is None else enable_issues,
@@ -470,3 +471,34 @@ def set_repo_features(enable_wiki: bool = False, enable_issues: bool = False,
                 )]
         return []
     return _set_repo_features
+
+
+def remove_all_outside_collaborators(org: Organization, repo: Repository,
+                                     branches: Dict[str, Branch]) -> List[Change[NamedUser]]:
+    def execute_remove_all_outside_collaborators(change: Change[NamedUser], repo: Repository) -> Change[NamedUser]:
+        if change.action == ChangeActions.REMOVE:
+            print_debug("%s Removing collaborator %s" % (highlight("[%s]" % repo.name), change.before.login))
+            try:
+                repo.remove_from_collaborators(change.before)
+            except GithubException:
+                return change.failure()
+            return change.success()
+
+    collaborators = list(repo.get_collaborators("outside"))  # type: List[NamedUser]
+    changes = []  # type: List[Change[NamedUser]]
+    for collab in collaborators:
+        changes.append(
+            Change(
+                meta=ChangeMetadata(
+                    executor=execute_remove_all_outside_collaborators,
+                    params=[
+                        repo,
+                    ]
+                ),
+                action=ChangeActions.REMOVE,
+                before=collab,
+                after=None,
+                cosmetic_prefix="Collaborator:"
+            )
+        )
+    return changes
