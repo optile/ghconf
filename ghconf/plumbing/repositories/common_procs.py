@@ -473,24 +473,25 @@ def set_repo_features(enable_wiki: bool = False, enable_issues: bool = False,
     return _set_repo_features
 
 
+def __execute_remove_collaborator(change: Change[NamedUser], repo: Repository) -> Change[NamedUser]:
+    if change.action == ChangeActions.REMOVE:
+        print_debug("%s Removing collaborator %s" % (highlight("[%s]" % repo.name), change.before.login))
+        try:
+            repo.remove_from_collaborators(change.before)
+        except GithubException:
+            return change.failure()
+        return change.success()
+
+
 def remove_all_outside_collaborators(org: Organization, repo: Repository,
                                      branches: Dict[str, Branch]) -> List[Change[NamedUser]]:
-    def execute_remove_all_outside_collaborators(change: Change[NamedUser], repo: Repository) -> Change[NamedUser]:
-        if change.action == ChangeActions.REMOVE:
-            print_debug("%s Removing collaborator %s" % (highlight("[%s]" % repo.name), change.before.login))
-            try:
-                repo.remove_from_collaborators(change.before)
-            except GithubException:
-                return change.failure()
-            return change.success()
-
     collaborators = list(repo.get_collaborators("outside"))  # type: List[NamedUser]
     changes = []  # type: List[Change[NamedUser]]
     for collab in collaborators:
         changes.append(
             Change(
                 meta=ChangeMetadata(
-                    executor=execute_remove_all_outside_collaborators,
+                    executor=__execute_remove_collaborator,
                     params=[
                         repo,
                     ]
@@ -498,7 +499,31 @@ def remove_all_outside_collaborators(org: Organization, repo: Repository,
                 action=ChangeActions.REMOVE,
                 before=collab,
                 after=None,
-                cosmetic_prefix="Collaborator:"
+                cosmetic_prefix="Removing outsider:"
             )
         )
+    return changes
+
+
+def remove_all_admin_collaborators(org: Organization, repo: Repository,
+                                   branches: Dict[str, Branch]) -> List[Change[NamedUser]]:
+    collaborators = list(repo.get_collaborators("all"))  # type: List[NamedUser]
+    changes = []  # type: List[Change[NamedUser]]
+    for collab in collaborators:
+        perms = repo.get_collaborator_permission(collab)
+        if perms == "admin":
+            changes.append(
+                Change(
+                    meta=ChangeMetadata(
+                        executor=__execute_remove_collaborator,
+                        params=[
+                            repo,
+                        ]
+                    ),
+                    action=ChangeActions.REMOVE,
+                    before=collab,
+                    after=None,
+                    cosmetic_prefix="Removing admin:"
+                )
+            )
     return changes

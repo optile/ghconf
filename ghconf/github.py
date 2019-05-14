@@ -66,7 +66,8 @@ def check_rate_limits() -> None:
 
 @aspectlib.Aspect(bind=True)
 def handle_rate_limits(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    check_rate_limits()
+    if cutpoint.__name__ not in ["get_rate_limit", "rate_limiting", "rate_limiting_resettime"]:
+        check_rate_limits()
     # then, execute the function we're proxying
     yield aspectlib.Proceed
 
@@ -135,12 +136,14 @@ def patch_tree(root_module: ModuleType, patcher: Callable[[type, bool], None], d
 
 
 @synchronized
-def get_github(github_token: str, dry_run: bool = False, *args: Any, **kwargs: Any) -> Github:
+def get_github(github_token: str = None, dry_run: bool = False, *args: Any, **kwargs: Any) -> Github:
     global gh
 
     patch_tree(github, weave_magic, dry_run)
 
     if not gh:
+        if not github_token:
+            raise TypeError("Can't initialize Github instance without github_token")
         print_debug("Initializing Github instance")
         gh = Github(github_token, *args, **kwargs)
 
