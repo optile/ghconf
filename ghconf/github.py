@@ -66,8 +66,7 @@ def check_rate_limits() -> None:
 
 @aspectlib.Aspect(bind=True)
 def handle_rate_limits(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    if cutpoint.__name__ not in ["get_rate_limit", "rate_limiting", "rate_limiting_resettime"]:
-        check_rate_limits()
+    check_rate_limits()
     # then, execute the function we're proxying
     yield aspectlib.Proceed
 
@@ -112,7 +111,9 @@ def enforce_dryrun(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> A
 
 def weave_magic(cls: type, dry_run: bool = False) -> None:
     if issubclass(cls, (github.GithubObject.GithubObject, github.PaginatedList.PaginatedList)):
-        aspectlib.weave(cls, [handle_rate_limits, retry_on_server_failure], methods=aspectlib.ALL_METHODS)
+        aspectlib.weave(cls, [handle_rate_limits, retry_on_server_failure],
+                        methods=re.compile('(?!__getattribute__$|rate_limiting$|get_rate_limit$|'
+                                           'rate_limiting_resettime$)'))
         if dry_run:
             aspectlib.weave(cls, enforce_dryrun, methods=re.compile(r"(^edit|^remove|^create|^replace)"))
 
