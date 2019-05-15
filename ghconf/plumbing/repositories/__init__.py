@@ -142,34 +142,32 @@ class AccessChangeFactory:
         for role in current_perms.keys():
             team_pol = cast(Policy[str], access_config.get(role, {}).get("team_policy", default_pol))
 
-            if current_perms[role]:
-                tname_changes = team_pol.apply_to_set(
-                    meta=ChangeMetadata(
-                        executor=self.apply_team_access,
-                        params=[repo, role, ],
-                    ),
-                    current=current_perms[role],
-                    plan=set(cast(List[str], access_config.get(role, {}).get("teams", []))),
-                    cosmetic_prefix="%s (team):" % role
-                )
-                ret += cast(List[Change[str]], tname_changes)
+            tname_changes = team_pol.apply_to_set(
+                meta=ChangeMetadata(
+                    executor=self.apply_team_access,
+                    params=[repo, role, ],
+                ),
+                current=current_perms[role],
+                plan=set(cast(List[str], access_config.get(role, {}).get("teams", []))),
+                cosmetic_prefix="%s (team):" % role
+            )
+            ret += cast(List[Change[str]], tname_changes)
 
-            if collab_perms[role]:
-                # assemble a set of NamedUsers for the planned state, because the GitHub collaborator API operates
-                # on NamedUser instances, not username strs.
-                plan_set = {get_github().get_user(login) for login in
-                            access_config.get(role, {}).get("collaborators", [])}
-                collab_pol = cast(Policy[NamedUser], access_config.get(role, {}).get("collaborator_policy", default_pol))
-                collab_changes = collab_pol.apply_to_set(
-                    meta=ChangeMetadata(
-                        executor=self.apply_collaborator_access,
-                        params=[repo, role,],
-                    ),
-                    current=collab_perms[role],
-                    plan=plan_set,
-                    cosmetic_prefix="%s (collaborator):" % role
-                )
-                ret += cast(List[Change[str]], collab_changes)
+            # assemble a set of NamedUsers for the planned state, because the GitHub collaborator API operates
+            # on NamedUser instances, not username strs.
+            plan_set = {get_github().get_user(login) for login in
+                        access_config.get(role, {}).get("collaborators", [])}
+            collab_pol = cast(Policy[NamedUser], access_config.get(role, {}).get("collaborator_policy", default_pol))
+            collab_changes = collab_pol.apply_to_set(
+                meta=ChangeMetadata(
+                    executor=self.apply_collaborator_access,
+                    params=[repo, role,],
+                ),
+                current=collab_perms[role],
+                plan=plan_set,
+                cosmetic_prefix="%s (collaborator):" % role
+            )
+            ret += cast(List[Change[str]], collab_changes)
         return ret
 
 
