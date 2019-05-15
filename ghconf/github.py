@@ -109,38 +109,22 @@ def enforce_dryrun(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> A
     yield  # type: ignore
 
 
-def weave_magic(cls: type, dry_run: bool = False) -> None:
-    if issubclass(cls, (github.GithubObject.GithubObject, github.PaginatedList.PaginatedList)):
-        aspectlib.weave(cls, [handle_rate_limits, retry_on_server_failure],
-                        methods=re.compile('(?!__getattribute__$|rate_limiting$|get_rate_limit$|'
-                                           'rate_limiting_resettime$)'))
-        if dry_run:
-            aspectlib.weave(cls, enforce_dryrun, methods=re.compile(r"(^edit|^remove|^create|^replace)"))
-
-
-def patch_tree(root_module: ModuleType, patcher: Callable[[type, bool], None], dry_run: bool = False,
-               path: str = "") -> None:
-    for symbol in dir(root_module):
-        try:
-            sympath = "%s%s" % ("%s." % path, symbol)
-            mod = importlib.import_module(sympath, root_module.__name__)
-        except ModuleNotFoundError:
-            pass
-        else:
-            new_path = "%s%s" % ("%s." % path if path else "", mod.__name__)
-            patch_tree(mod, patcher, dry_run, new_path)
-            continue
-
-        cls = getattr(root_module, symbol)
-        if inspect.isclass(cls):
-            patcher(cls, dry_run)
+def weave_magic(dry_run: bool = False) -> None:
+    aspectlib.weave([github.GithubObject.GithubObject, github.PaginatedList.PaginatedList],
+                    [handle_rate_limits, retry_on_server_failure],
+                    methods=re.compile(r'(?!__getattribute__$|rate_limiting$|get_rate_limit$|'
+                                       r'rate_limiting_resettime$|(_|_.*?_)make[a-zA-Z]+Attribute$|'
+                                       r'_useAttributes$|_initAttributes$|__init__$)'))
+    if dry_run:
+        aspectlib.weave([github.GithubObject.GithubObject, github.PaginatedList.PaginatedList],
+                        enforce_dryrun, methods=re.compile(r"(^edit|^remove|^create|^replace)"))
 
 
 @synchronized
 def get_github(github_token: str = None, dry_run: bool = False, *args: Any, **kwargs: Any) -> Github:
     global gh
 
-    patch_tree(github, weave_magic, dry_run)
+    weave_magic(dry_run)
 
     if not gh:
         if not github_token:
