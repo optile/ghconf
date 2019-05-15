@@ -505,9 +505,9 @@ def remove_all_outside_collaborators(org: Organization, repo: Repository,
     return changes
 
 
-def remove_all_admin_collaborators(org: Organization, repo: Repository,
+def remove_org_admin_collaborators(org: Organization, repo: Repository,
                                    branches: Dict[str, Branch]) -> List[Change[NamedUser]]:
-    collaborators = list(repo.get_collaborators("all"))  # type: List[NamedUser]
+    collaborators = list(repo.get_collaborators("direct"))  # type: List[NamedUser]
     changes = []  # type: List[Change[NamedUser]]
     for collab in collaborators:
         perms = repo.get_collaborator_permission(collab)
