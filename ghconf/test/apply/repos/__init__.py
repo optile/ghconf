@@ -3,12 +3,17 @@ import re
 
 from ghconf.plumbing.repositories import RepositoriesConfig, repoconfig_t
 from ghconf.plumbing.repositories import common_procs
-from ghconf.primitives import OVERWRITE
+from ghconf.primitives import OVERWRITE, EXTEND
 
 config = {
     re.compile(r'^test1[_\-]'): {
         'access': {
             'policy': OVERWRITE,
+            'admin': {
+                'team_policy': OVERWRITE,
+                'collaborator_policy': EXTEND,
+                'collaborators': ['ghconf-test4'],
+            },
             'push': {
                 'teams': ['Core Developers'],
             },
