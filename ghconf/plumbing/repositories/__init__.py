@@ -141,35 +141,37 @@ class AccessChangeFactory:
             team_pol = cast(Policy[str],
                             cast(Dict[str, Policy[str]], access_config.get(role, {})).get("team_policy", default_pol))
 
-            tname_changes = team_pol.apply_to_set(
-                meta=ChangeMetadata(
-                    executor=self.apply_team_access,
-                    params=[repo, role, ],
-                ),
-                current=current_perms[role],
-                plan=set(cast(List[str],
-                              cast(Dict[str, List[str]], access_config.get(role, {})).get("teams", []))),
-                cosmetic_prefix="%s (team):" % role
-            )
-            ret += cast(List[Change[str]], tname_changes)
+            if current_perms[role] or cast(Dict[str, List[str]], access_config.get(role, {})).get("teams", []):
+                tname_changes = team_pol.apply_to_set(
+                    meta=ChangeMetadata(
+                        executor=self.apply_team_access,
+                        params=[repo, role, ],
+                    ),
+                    current=current_perms[role],
+                    plan=set(cast(List[str],
+                                  cast(Dict[str, List[str]], access_config.get(role, {})).get("teams", []))),
+                    cosmetic_prefix="%s (team):" % role
+                )
+                ret += cast(List[Change[str]], tname_changes)
 
             # assemble a set of NamedUsers for the planned state, because the GitHub collaborator API operates
             # on NamedUser instances, not username strs.
             plan_set = {get_github().get_user(login) for login in
                         cast(Dict[str, List[str]], access_config.get(role, {})).get("collaborators", [])}
-            collab_pol = cast(Policy[NamedUser],
-                              cast(Dict[str, Policy[NamedUser]],
-                                   access_config.get(role, {})).get("collaborator_policy", default_pol))
-            collab_changes = collab_pol.apply_to_set(
-                meta=ChangeMetadata(
-                    executor=self.apply_collaborator_access,
-                    params=[repo, role,],
-                ),
-                current=collab_perms[role],
-                plan=plan_set,
-                cosmetic_prefix="%s (collaborator):" % role
-            )
-            ret += cast(List[Change[str]], collab_changes)
+            if collab_perms[role] or plan_set:
+                collab_pol = cast(Policy[NamedUser],
+                                  cast(Dict[str, Policy[NamedUser]],
+                                       access_config.get(role, {})).get("collaborator_policy", default_pol))
+                collab_changes = collab_pol.apply_to_set(
+                    meta=ChangeMetadata(
+                        executor=self.apply_collaborator_access,
+                        params=[repo, role,],
+                    ),
+                    current=collab_perms[role],
+                    plan=plan_set,
+                    cosmetic_prefix="%s (collaborator):" % role
+                )
+                ret += cast(List[Change[str]], collab_changes)
         return ret
 
 
