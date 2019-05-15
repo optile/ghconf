@@ -94,9 +94,6 @@ class AccessChangeFactory:
         return change.success()
 
     def apply_collaborator_access(self, change: Change[NamedUser], repo: Repository, role: str) -> Change[NamedUser]:
-        if change.action not in [ChangeActions.ADD, ChangeActions.REMOVE]:
-            return change.skipped()
-
         if change.action == ChangeActions.REMOVE and change.before is not None:
             try:
                 repo.remove_from_collaborators(change.before)
@@ -113,6 +110,7 @@ class AccessChangeFactory:
                             (change.after.login, repo.name, str(e)))
                 return change.failure()
             return change.success()
+        return change.skipped()
 
     def diff_repo_access(self, repo: Repository, access_config: accessconfig_t) -> List[Change[str]]:
         repo_teams = cache.lazy_get_or_store("repoteams_%s" % repo.name,
@@ -140,7 +138,8 @@ class AccessChangeFactory:
         default_pol = access_config.get("policy", OVERWRITE)
 
         for role in current_perms.keys():
-            team_pol = cast(Policy[str], access_config.get(role, {}).get("team_policy", default_pol))
+            team_pol = cast(Policy[str],
+                            cast(Dict[str, Policy[str]], access_config.get(role, {})).get("team_policy", default_pol))
 
             tname_changes = team_pol.apply_to_set(
                 meta=ChangeMetadata(
@@ -148,7 +147,8 @@ class AccessChangeFactory:
                     params=[repo, role, ],
                 ),
                 current=current_perms[role],
-                plan=set(cast(List[str], access_config.get(role, {}).get("teams", []))),
+                plan=set(cast(List[str],
+                              cast(Dict[str, List[str]], access_config.get(role, {})).get("teams", []))),
                 cosmetic_prefix="%s (team):" % role
             )
             ret += cast(List[Change[str]], tname_changes)
@@ -156,8 +156,10 @@ class AccessChangeFactory:
             # assemble a set of NamedUsers for the planned state, because the GitHub collaborator API operates
             # on NamedUser instances, not username strs.
             plan_set = {get_github().get_user(login) for login in
-                        access_config.get(role, {}).get("collaborators", [])}
-            collab_pol = cast(Policy[NamedUser], access_config.get(role, {}).get("collaborator_policy", default_pol))
+                        cast(Dict[str, List[str]], access_config.get(role, {})).get("collaborators", [])}
+            collab_pol = cast(Policy[NamedUser],
+                              cast(Dict[str, Policy[NamedUser]],
+                                   access_config.get(role, {})).get("collaborator_policy", default_pol))
             collab_changes = collab_pol.apply_to_set(
                 meta=ChangeMetadata(
                     executor=self.apply_collaborator_access,

@@ -474,13 +474,14 @@ def set_repo_features(enable_wiki: bool = False, enable_issues: bool = False,
 
 
 def __execute_remove_collaborator(change: Change[NamedUser], repo: Repository) -> Change[NamedUser]:
-    if change.action == ChangeActions.REMOVE:
+    if change.action == ChangeActions.REMOVE and change.before is not None:
         print_debug("%s Removing collaborator %s" % (highlight("[%s]" % repo.name), change.before.login))
         try:
             repo.remove_from_collaborators(change.before)
         except GithubException:
             return change.failure()
         return change.success()
+    return change.skipped()
 
 
 def remove_all_outside_collaborators(org: Organization, repo: Repository,

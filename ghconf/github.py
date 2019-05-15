@@ -106,7 +106,7 @@ def enforce_dryrun(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> A
                           "who. If the call is ok, add an exception to ghconf.github.enforce_dryrun" %
                           cutpoint.__name__)
     # enforce_dryrun must be a generator... so this is an unreachable yield
-    yield  # type: ignore
+    yield
 
 
 def weave_magic(dry_run: bool = False) -> None:
@@ -121,7 +121,7 @@ def weave_magic(dry_run: bool = False) -> None:
 
 
 @synchronized
-def get_github(github_token: str = None, dry_run: bool = False, *args: Any, **kwargs: Any) -> Github:
+def get_github(github_token: str = "", dry_run: bool = False, *args: Any, **kwargs: Any) -> Github:
     global gh
 
     weave_magic(dry_run)
