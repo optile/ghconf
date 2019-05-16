@@ -170,11 +170,12 @@ Repository Configuration Example
     config = {
         re.compile(r'^test1[_\-]'): {
             'access': {
+                # policy overwrites team_policy/collaborator_policy if specified
                 'policy': OVERWRITE,
                 'admin': {
                     'team_policy': OVERWRITE,
                     'collaborator_policy': EXTEND,
-                    'collaborators': ['ghconf-test4'],
+                    'collaborators': ['ghconf-test4'],  # add individual users
                 },
                 'push': {
                     'teams': ['Core Developers'],
@@ -225,8 +226,11 @@ definitions will be helpful for writing code:
   for finding executing changes.
 * ``repoconfig_t`` describes a repository configuration dict
   which maps regular expressions to actions to take on a repository.
+* ``accessconfig_t`` is the type of a team access configuration for
+  repositories
 * ``teamsconfig_t`` describes configuration for setting up
   teams.
+
 
 
 .. _pygithubpr: https://github.com/PyGithub/PyGithub/pull/996
