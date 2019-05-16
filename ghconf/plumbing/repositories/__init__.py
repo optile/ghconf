@@ -6,13 +6,21 @@ from github.Branch import Branch
 from github.Repository import Repository
 from github.Organization import Organization
 from github.Team import Team as GithubTeam
+from github.NamedUser import NamedUser
 from typing import Optional
 
 from ghconf import cache
 from ghconf.base import GHConfModuleDef, ChangeSet, Change, ChangeMetadata, ChangeActions
+from ghconf.github import get_github
 from ghconf.plumbing.teams import Team
 from ghconf.primitives import Policy, OVERWRITE
 from ghconf.utils import highlight, print_debug, print_error
+
+
+repoproc_t = Callable[[Organization, Repository, Dict[str, Branch]], List[Change[str]]]
+accessconfig_t = Dict[str, Union[Policy[Any], Dict[str, Union[Policy[Any], List[str]]]]]
+singleconfig_t = Dict[str, Union[Policy[Any], List[repoproc_t], accessconfig_t]]
+repoconfig_t = Dict[Pattern[str], singleconfig_t]
 
 
 class AccessChangeFactory:
@@ -29,6 +37,28 @@ class AccessChangeFactory:
                                                                  lambda: list(self.org.get_teams()))
             }
         return self._org_teams
+
+    @staticmethod
+    def unified_permission_from_collaborator(permstr: str) -> str:
+        if permstr == "write":
+            return "push"
+        elif permstr == "read":
+            return "pull"
+        elif permstr == "admin":
+            return "admin"
+        else:
+            raise ValueError("Unknown permission string to translate: %s" % permstr)
+
+    @staticmethod
+    def collaborator_permission_from_unified(permstr: str) -> str:
+        if permstr == "push":
+            return "write"
+        elif permstr == "pull":
+            return "read"
+        elif permstr == "admin":
+            return "admin"
+        else:
+            raise ValueError("Unknown unified permission to translate: %s" % permstr)
 
     def apply_team_access(self, change: Change[str], repo: Repository, role: str) -> Change[str]:
         if change.action not in [ChangeActions.ADD, ChangeActions.REMOVE]:
@@ -63,8 +93,26 @@ class AccessChangeFactory:
                 return change.failure()
         return change.success()
 
-    def diff_team_access(self, repo: Repository,
-                         access_config: Dict[str, Dict[str, Union[Policy[Any], List[str]]]]) -> List[Change[str]]:
+    def apply_collaborator_access(self, change: Change[NamedUser], repo: Repository, role: str) -> Change[NamedUser]:
+        if change.action == ChangeActions.REMOVE and change.before is not None:
+            try:
+                repo.remove_from_collaborators(change.before)
+            except GithubException as e:
+                print_error("Can't remove collaborator %s from repo %s: %s" %
+                            (change.before.login, repo.name, str(e)))
+                return change.failure()
+            return change.success()
+        elif change.action == ChangeActions.ADD and change.after is not None:
+            try:
+                repo.add_to_collaborators(change.after, self.collaborator_permission_from_unified(role))
+            except GithubException as e:
+                print_error("Can't add collaborator %s to repo %s: %s" %
+                            (change.after.login, repo.name, str(e)))
+                return change.failure()
+            return change.success()
+        return change.skipped()
+
+    def diff_repo_access(self, repo: Repository, access_config: accessconfig_t) -> List[Change[str]]:
         repo_teams = cache.lazy_get_or_store("repoteams_%s" % repo.name,
                                              lambda: list(repo.get_teams()))  # type: List[GithubTeam]
 
@@ -74,30 +122,57 @@ class AccessChangeFactory:
             "admin": set([t.name for t in repo_teams if t.permission == "admin"])
         }
 
-        ret = []  # type: List[Change[str]]
+        repo_collabs = cache.lazy_get_or_store("collaborators_%s" % repo.name,
+                                               lambda: list(repo.get_collaborators("outside")))  # type: List[NamedUser]
+        collab_perms = {
+            "push": set(),
+            "pull": set(),
+            "admin": set(),
+        }  # type: Dict[str, Set[NamedUser]]
+        for col in repo_collabs:
+            perm = self.unified_permission_from_collaborator(repo.get_collaborator_permission(col))
+            collab_perms[perm].add(col)
+
+        ret = []  # type: List[Union[Change[str], Change[NamedUser]]]
 
         default_pol = access_config.get("policy", OVERWRITE)
 
         for role in current_perms.keys():
-            pol = cast(Policy[str], access_config.get(role, {}).get("policy", default_pol))
+            team_pol = cast(Policy[str],
+                            cast(Dict[str, Policy[str]], access_config.get(role, {})).get("team_policy", default_pol))
 
-            tname_changes = pol.apply_to_set(
-                meta=ChangeMetadata(
-                    executor=self.apply_team_access,
-                    params=[repo, role, ],
-                ),
-                current=current_perms[role],
-                plan=set(cast(List[str], access_config.get(role, {}).get("teams", []))),
-                cosmetic_prefix="%s:" % role
-            )
-            ret += cast(List[Change[str]], tname_changes)
+            if current_perms[role] or cast(Dict[str, List[str]], access_config.get(role, {})).get("teams", []):
+                tname_changes = team_pol.apply_to_set(
+                    meta=ChangeMetadata(
+                        executor=self.apply_team_access,
+                        params=[repo, role, ],
+                    ),
+                    current=current_perms[role],
+                    plan=set(cast(List[str],
+                                  cast(Dict[str, List[str]], access_config.get(role, {})).get("teams", []))),
+                    cosmetic_prefix="%s (team):" % role
+                )
+                ret += cast(List[Change[str]], tname_changes)
+
+            # assemble a set of NamedUsers for the planned state, because the GitHub collaborator API operates
+            # on NamedUser instances, not username strs.
+            plan_set = {get_github().get_user(login) for login in
+                        cast(Dict[str, List[str]], access_config.get(role, {})).get("collaborators", [])}
+            if collab_perms[role] or plan_set:
+                collab_pol = cast(Policy[NamedUser],
+                                  cast(Dict[str, Policy[NamedUser]],
+                                       access_config.get(role, {})).get("collaborator_policy", default_pol))
+                collab_changes = collab_pol.apply_to_set(
+                    meta=ChangeMetadata(
+                        executor=self.apply_collaborator_access,
+                        params=[repo, role,],
+                    ),
+                    current=collab_perms[role],
+                    plan=plan_set,
+                    cosmetic_prefix="%s (collaborator):" % role
+                )
+                ret += cast(List[Change[str]], collab_changes)
         return ret
-
-
-repoproc_t = Callable[[Organization, Repository, Dict[str, Branch]], List[Change[str]]]
-accessconfig_t = Dict[str, Union[Policy[Any], Dict[str, Union[Policy[Any], List[str]]]]]
-singleconfig_t = Dict[str, Union[Policy[Any], List[repoproc_t], accessconfig_t]]
-repoconfig_t = Dict[Pattern[str], singleconfig_t]
 
 
 class RepositoriesConfig(GHConfModuleDef):
@@ -136,7 +211,7 @@ class RepositoriesConfig(GHConfModuleDef):
                 ret.append(cs)
 
         if "access" in config:
-            print_debug("Building *access* changes for repo %s" % repo.name)
+            print_debug("Building %s changes for repo %s" % (highlight("access"), repo.name))
 
             if org.name not in self._org_accessfactories:
                 # poor man's caching for AccessChangeFactory.org_teams
@@ -144,10 +219,11 @@ class RepositoriesConfig(GHConfModuleDef):
 
             cs = ChangeSet(
                 "Repo {name}: Access".format(name=repo.name),
-                self._org_accessfactories[org.name].diff_team_access(repo, config["access"]),
-                description="Changes to team permissions"
+                self._org_accessfactories[org.name].diff_repo_access(repo, config["access"]),
+                description="Changes to access permissions"
             )
             ret.append(cs)
+
         return ret
 
     def build_repository_changesets(self, org: Organization, repo: Repository,
