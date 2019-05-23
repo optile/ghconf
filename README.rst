@@ -121,8 +121,15 @@ Team Configuration Example
 
     config = {
         "organization": {
+            # this policy decides what to do with admins that are not part of
+            # the config
             "admin_policy": EXTEND,
+            # this policy decides what to do with teams that are not part of
+            # the config
             "team_policy": EXTEND,
+            # this policy decides what to do with organization members that
+            # aren't part of a team
+            "member_policy": EXTEND,
             "admins": {
                 Admin(username="jdelic"),
             },

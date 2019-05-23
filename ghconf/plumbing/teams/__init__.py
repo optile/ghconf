@@ -7,7 +7,7 @@ from github.Team import Team as GithubTeam
 
 from ghconf import cache
 from ghconf.base import GHConfModuleDef, Change, ChangeSet, ChangeMetadata, ChangeActions
-from ghconf.primitives import Policy, EXTEND, Role
+from ghconf.primitives import Policy, EXTEND, Role, OVERWRITE
 from ghconf.utils import ErrorMessage, print_debug, print_warning, print_info, print_error, highlight
 
 
@@ -251,6 +251,18 @@ class TeamsConfig(GHConfModuleDef):
         return change.success()
 
     @staticmethod
+    def apply_member_removal(change: Change[str], org: Organization) -> Change[str]:
+        if change.action != ChangeActions.REMOVE:
+            print_debug("Unsupported change action for member removal: %s" % change.action)
+            return change.skipped()
+
+        from ghconf.github import get_github
+        print_debug("Removing member %s from org" % change.before)
+        ghmember = get_github().get_user(change.before)
+        org.remove_from_members(ghmember)
+        return change.success()
+
+    @staticmethod
     def apply_admin_change(change: Change[Admin], org: Organization) -> Change[Admin]:
         if change.action not in [ChangeActions.ADD, ChangeActions.REMOVE]:
             print_warning("Unsupported change action for org admins: %s" % change.action)
@@ -335,14 +347,18 @@ class TeamsConfig(GHConfModuleDef):
     def flatten_team_structure(self, toplevel: Set[Team]) -> Set[Team]:
         """
         Create a flat set of all teams in the team hierarchy
-        :param toplevel:
-        :return:
         """
         flat = toplevel  # type: Set[Team]
         for t in toplevel:
             if t.subteams:
                 flat = flat.union(self.flatten_team_structure(t.subteams))
         return flat
+
+    def flatten_member_structure(self, toplevel: Set[Team]) -> Set[BaseMember]:
+        members = set()  # type: Set[BaseMember]
+        for t in toplevel:
+            members = members.union(t.get_all_members())
+        return members
 
     def create_attr_change(self, org: Organization, attr: str, current: Team, plan: Team,
                            override_attr_name: Optional[str] = None) -> Union[None, Change[str]]:
@@ -374,10 +390,24 @@ class TeamsConfig(GHConfModuleDef):
             executor=self.apply_admin_change,
         )
         admins = set([Admin(username=m.login, id=m.id) for m in org.get_members(role=Role.ADMIN)])
-        admin_changes = self.config['organization']['admin_policy'].apply_to_set(
+        admin_changes = self.config['organization'].get('admin_policy', OVERWRITE).apply_to_set(
             meta=admin_meta, current=admins, plan=self.config['organization']['admins'])
 
         ret = [ChangeSet("{name}: Admins".format(name=__name__), admin_changes)]
+
+        member_meta = ChangeMetadata(
+            executor=self.apply_member_removal,
+        )
+        current_members = set([member.login for member in list(org.get_members(role="all"))])
+        planned_members = set([member.username for member in self.flatten_member_structure(self.config["teams"])])
+        member_changes = self.config['organization'].get('member_policy', OVERWRITE).apply_to_set(
+            meta=member_meta, current=current_members, plan=planned_members
+        )
+        # in this case we only keep removals, as member additions are handled by the team changes below
+        member_changes = [change for change in member_changes if change.action == ChangeActions.REMOVE]
+        ret += [
+            ChangeSet("{name}: Members".format(name=__name__), member_changes)
+        ]
 
         ext_existing = cache.lazy_get_or_store("orgteams_%s" % org.name,
                                                lambda: list(org.get_teams()))  # type: List[GithubTeam]
