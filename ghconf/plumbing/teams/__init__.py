@@ -355,6 +355,9 @@ class TeamsConfig(GHConfModuleDef):
         return flat
 
     def flatten_member_structure(self, toplevel: Set[Team]) -> Set[BaseMember]:
+        """
+        Create a flat set of all members assigned to the org via teams
+        """
         members = set()  # type: Set[BaseMember]
         for t in toplevel:
             members = members.union(t.get_all_members())
@@ -397,6 +400,7 @@ class TeamsConfig(GHConfModuleDef):
 
         member_meta = ChangeMetadata(
             executor=self.apply_member_removal,
+            params=[org],
         )
         current_members = set([member.login for member in list(org.get_members(role="all"))])
         planned_members = set([member.username for member in self.flatten_member_structure(self.config["teams"])])
