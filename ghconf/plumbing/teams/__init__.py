@@ -434,7 +434,7 @@ class TeamsConfig(GHConfModuleDef):
         )
         ret += [ChangeSet(
             source="{name}|{org}: Teams".format(name=__name__, org=org.name),
-            changes=self.config["organization"]["team_policy"].apply_to_set(
+            changes=self.config["organization"].get("team_policy", EXTEND).apply_to_set(
                 meta=team_meta, current=set(teammap.values()), plan=self.flatten_team_structure(self.config["teams"])),
         )]
 
