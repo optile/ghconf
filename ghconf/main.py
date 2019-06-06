@@ -264,16 +264,24 @@ def main() -> None:
                     try:
                         if moduledef.applies_to_repository(org, repo, branches):
                             repo.ghconf_touched = True
-                            break
+                            if not hasattr(repo, 'only_default'):
+                                repo.only_default = {}
+                            repo.only_default[modulename] = moduledef.applies_only_default_config(org, repo, branches)
                     except NotImplementedError:
                         continue
                 if not hasattr(repo, "ghconf_touched"):
                     repo.ghconf_touched = False
+                    repo.only_default = {}
 
-            for repo in repolist:
-                if not repo.ghconf_touched:
-                    print_wrapped(repo.full_name)
             pbar.close()
+
+            touched = []
+            for repo in repolist:
+                if not repo.ghconf_touched or all([v for k, v in repo.only_default.items()]):
+                    touched.append(repo.name)
+
+            for s in sorted(touched):
+                print_wrapped(s)
     else:
         # banner
         print_info("=" * (shutil.get_terminal_size()[0] - 15))

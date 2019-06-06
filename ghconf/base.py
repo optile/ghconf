@@ -259,6 +259,21 @@ class GHConfModuleDef:
         """
         raise NotImplementedError
 
+    def applies_only_default_config(self, organization: Organization, repository: Repository,
+                                    branches: List[Branch]) -> bool:
+        """
+        returns True is this module applies_to_repository, but will only apply default config. So if your module
+        applies the same configuration to each repository or supports the notion of a "default fallback" that gets
+        used when no special configuration applies, this method should return ``True``. The idea is that this will
+        allow a user to use ``--list-unconfigured-repos`` to find out if some repositories will only get default
+        configuration.
+        :param organization:
+        :param repository:
+        :param branches:
+        :return:
+        """
+        raise NotImplementedError
+
     def build_organization_changesets(self, organization: Organization) -> List[ChangeSet]:
         raise NotImplementedError
 

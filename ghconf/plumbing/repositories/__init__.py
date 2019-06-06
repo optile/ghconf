@@ -191,6 +191,13 @@ class RepositoriesConfig(GHConfModuleDef):
                 return True
         return False
 
+    def applies_only_default_config(self, organization: Organization, repo: Repository,
+                                    branches: List[Branch]) -> bool:
+        for pattern in self.config.keys():
+            if pattern.match(repo.name) is not None:
+                return False
+        return True
+
     def apply_config(self, config: Dict[Any, Any], org: Organization, repo: Repository,
                      repo_branches: List[Branch]) -> List[ChangeSet]:
         ret = []
