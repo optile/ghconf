@@ -15,6 +15,7 @@ config = {
             common_procs.set_repo_features(enable_wiki=True, enable_issues=True),
             common_procs.force_master_default,
             common_procs.remove_all_status_checks_on_pr_branch,
+            common_procs.remove_org_admin_collaborators,
         ]
     },
 }  # type: repoconfig_t
