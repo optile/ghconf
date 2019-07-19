@@ -6,7 +6,8 @@ from colorama import Fore
 
 from ghconf import utils
 from ghconf.base import ChangeSet, ChangeActions
-from ghconf.utils import highlight, progressbar, ttywrite, ANSITextWrapper
+from ghconf.utils import highlight, progressbar, ttywrite
+from ghconf.utils.ansi import ANSITextWrapper
 
 
 def print_changeset_banner(changeset: ChangeSet) -> None:
