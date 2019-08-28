@@ -1,6 +1,7 @@
 # -* encoding: utf-8 *-
 import importlib
 import inspect
+import socket
 import time
 import re
 from datetime import datetime, timezone
@@ -92,6 +93,9 @@ def retry_on_server_failure(cutpoint: Callable[..., Any], *args: Any, **kwargs: 
                 else:
                     print_error("Received server error %s from GitHub. Won't retry." % str(e.status))
                     raise
+            except socket.timeout:
+                print_error("Received socket timeout. Retry %s/3" % (str(e), str(i + 1)))
+                continue
         else:
             raise ErrorMessage("3 retries didn't yield results. Exiting.")
 
