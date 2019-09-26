@@ -24,10 +24,10 @@ class BaseMember:
     def __eq__(self, other: object) -> bool:
         if other is None or not isinstance(other, self.__class__):
             return False
-        return self.username == other.username and self.role == other.role
+        return self.username.lower() == other.username.lower() and self.role == other.role
 
     def __hash__(self) -> int:
-        return hash((self.username, self.role))
+        return hash((self.username.lower(), self.role))
 
 
 class Team:
