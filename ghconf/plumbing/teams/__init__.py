@@ -251,14 +251,14 @@ class TeamsConfig(GHConfModuleDef):
         return change.success()
 
     @staticmethod
-    def apply_member_removal(change: Change[str], org: Organization) -> Change[str]:
+    def apply_member_removal(change: Change[BaseMember], org: Organization) -> Change[BaseMember]:
         if change.action != ChangeActions.REMOVE:
             print_debug("Unsupported change action for member removal: %s" % change.action)
             return change.skipped()
 
         from ghconf.github import get_github
-        print_debug("Removing member %s from org" % change.before)
-        ghmember = get_github().get_user(change.before)
+        print_debug("Removing member %s from org" % change.before.username)
+        ghmember = get_github().get_user(change.before.username)
         org.remove_from_members(ghmember)
         return change.success()
 
@@ -402,8 +402,10 @@ class TeamsConfig(GHConfModuleDef):
             executor=self.apply_member_removal,
             params=[org],
         )
-        current_members = set([member.login for member in list(org.get_members(role="all"))])
-        planned_members = set([member.username for member in self.flatten_member_structure(self.config["teams"])])
+        current_members = set([BaseMember(username=member.login, role="unknown")
+                               for member in list(org.get_members(role="all"))])
+        planned_members = set([BaseMember(username=member.username, role="unknown")
+                               for member in self.flatten_member_structure(self.config["teams"])])
         member_changes = self.config['organization'].get('member_policy', OVERWRITE).apply_to_set(
             meta=member_meta, current=current_members, plan=planned_members
         )
