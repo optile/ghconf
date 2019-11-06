@@ -93,8 +93,11 @@ def retry_on_server_failure(cutpoint: Callable[..., Any], *args: Any, **kwargs: 
                 else:
                     print_error("Received server error %s from GitHub. Won't retry." % str(e.status))
                     raise
-            except socket.timeout:
-                print_error("Received socket timeout. Retry %s/3" % (str(e), str(i + 1)))
+            except socket.timeout as e:
+                print_error("Received socket timeout (%s). Retry %s/3" % (str(e), str(i + 1)))
+                continue
+            except ConnectionError as e:
+                print_error("Received connection error (%s). Retry %s/3" % (str(e), str(i + 1)))
                 continue
         else:
             raise ErrorMessage("3 retries didn't yield results. Exiting.")
