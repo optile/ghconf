@@ -9,11 +9,13 @@ from types import ModuleType
 from typing import Callable, Any,  cast, Dict
 
 import github
+import urllib3
 
 from github.GithubException import GithubException
 from github.GithubObject import GithubObject
 from github.PaginatedList import PaginatedList
 from github import Github
+from requests import ConnectionError as RequestsConnectionError  # don't shadow builtin ConnectionError
 from wrapt import synchronized
 
 from ghconf.utils import print_debug, print_info, print_error, ErrorMessage, ttywrite, highlight, resumebar, suspendbar
@@ -96,7 +98,7 @@ def retry_on_server_failure(cutpoint: Callable[..., Any], *args: Any, **kwargs: 
             except socket.timeout as e:
                 print_error("Received socket timeout (%s). Retry %s/3" % (str(e), str(i + 1)))
                 continue
-            except ConnectionError as e:
+            except (ConnectionError, RequestsConnectionError, urllib3.exceptions.HTTPError) as e:
                 print_error("Received connection error (%s). Retry %s/3" % (str(e), str(i + 1)))
                 continue
         else:
