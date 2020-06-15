@@ -137,7 +137,7 @@ class Team:
             ret.add_member(Maintainer(username=m.login, id=m.id))
 
         if retrieve_subteams:
-            for subteam in cache.lazy_get_or_store("subteams_%s" % ght.name, lambda: list(ght.get_subteams())):
+            for subteam in cache.lazy_get_or_store("subteams_%s" % ght.name, lambda: list(ght.get_teams())):
                 ret.subteams.add(Team.from_githubteam(subteam))
 
         return ret
