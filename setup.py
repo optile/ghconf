@@ -26,9 +26,9 @@ _packages = find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"])
 _requirements = [
     'colorama==0.4.1',
     'wrapt==1.10.1',
-    'pygithub==1.43.5',
+    'pygithub==1.51',
     'aspectlib==1.4.2',
-    'tqdm==4.31.1',
+    'tqdm==4.46.1',
 ]
 
 try:
