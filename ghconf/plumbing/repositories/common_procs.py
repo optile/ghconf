@@ -282,6 +282,35 @@ def protect_branch_with_approvals(branch_name: str, count: int = 1) -> repoproc_
     return _protect_branch_with_approvals
 
 
+def set_delete_branch_on_pr_merge(value: bool) -> repoproc_t:
+    def delete_branch_on_merge(org: Organization, repo: Repository,
+                               branches: Dict[str, Branch]) -> List[Change[str]]:
+        """
+        Turns on a feature that enforces automatic branch deletion when a PR is merged
+        """
+        def _set_delete_branch_on_merge(change: Change[str]) -> Change[str]:
+            print_debug("[%s] Enforcing branch deletion on PR merge" % highlight(repo.name))
+            try:
+                repo.edit(delete_branch_on_merge=value)
+            except GithubException:
+                return change.failure()
+
+            return change.success()
+
+        if not repo.delete_branch_on_merge:
+            change = Change(
+                meta=ChangeMetadata(
+                    executor=_set_delete_branch_on_merge,
+                ),
+                action=ChangeActions.REPLACE,
+                before="On PR merge: %s" % "Delete branch" if repo.delete_branch_on_merge else "Keep branch",
+                after="On PR merge: %s" % "Delete branch" if value else "Keep branch"
+            )
+            return [change]
+        return []
+    return delete_branch_on_merge
+
+
 GOT = TypeVar("GOT")
 _GithubOptional = Union[GOT, _NotSetType]
 
