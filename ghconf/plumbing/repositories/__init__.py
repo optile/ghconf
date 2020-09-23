@@ -40,9 +40,9 @@ class AccessChangeFactory:
 
     @staticmethod
     def unified_permission_from_collaborator(permstr: str) -> str:
-        if permstr == "write":
+        if permstr == "write" or permstr == "push":
             return "push"
-        elif permstr == "read":
+        elif permstr == "read" or permstr == "pull":
             return "pull"
         elif permstr == "admin":
             return "admin"
@@ -123,7 +123,7 @@ class AccessChangeFactory:
         }
 
         repo_collabs = cache.lazy_get_or_store("collaborators_%s" % repo.name,
-                                               lambda: list(repo.get_collaborators("outside")))  # type: List[NamedUser]
+                                               lambda: list(repo.get_collaborators("direct")))  # type: List[NamedUser]
         collab_perms = {
             "push": set(),
             "pull": set(),
