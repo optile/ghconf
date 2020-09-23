@@ -24,11 +24,11 @@ for l in lines:
 _packages = find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"])
 
 _requirements = [
-    'colorama==0.4.1',
-    'wrapt==1.10.1',
+    'colorama==0.4.3',
+    'wrapt==1.12.1',
     'pygithub==1.51',
-    'aspectlib==1.4.2',
-    'tqdm==4.46.1',
+    'aspectlib==1.5.1',
+    'tqdm==4.49.0',
 ]
 
 try:
