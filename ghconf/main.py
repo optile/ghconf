@@ -25,6 +25,7 @@ modules = {}  # type: Dict[str, GHConfModuleDef]
 
 def assemble_repolist(args: Namespace, org: Organization) -> List[Repository]:
     repolist = []
+    filtered_repolist = []
     if not args.skip_repo_changes:
         print_info("Assembling repository list...")
         if args.repos:
@@ -53,12 +54,16 @@ def assemble_repolist(args: Namespace, org: Organization) -> List[Repository]:
         if not args.repos and not args.reporegexes:
             print_info("No repository regex or name specified, run against %s repos" % utils.highlight("all"))
             repolist = list(org.get_repos())
-        elif not repolist:
+
+        filtered_repolist = [r for r in repolist if not r.archived]
+
+        if not filtered_repolist:
             if args.skip_org_changes:
                 print_warning("No repos matched and skipping org changes. Nothing to do.")
             else:
                 print_warning("No repos matched!")
-    return repolist
+
+    return filtered_repolist
 
 
 def assemble_changedict(args: Namespace, org: Organization) -> Dict[str, ChangeSet]:
