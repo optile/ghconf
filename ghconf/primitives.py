@@ -1,6 +1,7 @@
 # -* encoding: utf-8 *-
 
 # Useful primitives for building configuration modules and DSLs.
+import enum
 from typing import TypeVar, Dict, Any, Set, List, Generic, Optional, Union, cast
 
 from ghconf.base import Change, ChangeMetadata, ChangeActions
@@ -124,6 +125,70 @@ class Role:
     MEMBER = "member"
     MAINTAINER = "maintainer"
 
+
+class PermissionSetType(enum.Enum):
+    TEAMS = "teams"
+    COLLABORATORS = "collaborators"
+
+
+class Permission:
+    PUSH: 'Permission'
+    PULL: 'Permission'
+    ADMIN: 'Permission'
+
+    def __init__(self, permstr: str) -> None:
+        self.permstr = permstr
+
+    @staticmethod
+    def unified_permission_from_collaborator(permstr: str) -> str:
+        if permstr == "write" or permstr == "push":
+            return "push"
+        elif permstr == "read" or permstr == "pull":
+            return "pull"
+        elif permstr == "admin":
+            return "admin"
+        else:
+            raise ValueError("Unknown permission string to translate: %s" % permstr)
+
+    @staticmethod
+    def collaborator_permission_from_unified(permstr: str) -> str:
+        if permstr == "push":
+            return "write"
+        elif permstr == "pull":
+            return "read"
+        elif permstr == "admin":
+            return "admin"
+        else:
+            raise ValueError("Unknown unified permission to translate: %s" % permstr)
+
+    @staticmethod
+    def is_valid(teststr: str) -> bool:
+        return teststr in ["push", "pull", "admin", "write", "read"]
+
+    def for_collaborators(self) -> str:
+        return Permission.collaborator_permission_from_unified(self.permstr)
+
+    def for_teams(self) -> str:
+        return Permission.unified_permission_from_collaborator(self.permstr)
+
+    def value(self, typ: PermissionSetType) -> str:
+        if typ == PermissionSetType.TEAMS:
+            return Permission.unified_permission_from_collaborator(self.permstr)
+        if typ == PermissionSetType.COLLABORATORS:
+            return Permission.collaborator_permission_from_unified(self.permstr)
+        raise ValueError("Not a valid PermissionSetType %s" % str(typ))
+
+    def __eq__(self, other: Union['Permission', str]) -> bool:
+        if isinstance(other, Permission):
+            return self.value(PermissionSetType.TEAMS) == other.value(PermissionSetType.TEAMS)
+        elif isinstance(other, str):
+            return self.value(PermissionSetType.TEAMS) == other or self.value(PermissionSetType.COLLABORATORS) == other
+        return False
+
+
+Permission.PUSH = Permission("push")
+Permission.PULL = Permission("pull")
+Permission.ADMIN = Permission("admin")
 
 KT = TypeVar('KT')  # Key type.
 VT = TypeVar('VT')  # Value type.

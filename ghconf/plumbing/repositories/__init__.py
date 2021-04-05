@@ -18,7 +18,8 @@ from ghconf.utils import highlight, print_debug, print_error
 
 
 repoproc_t = Callable[[Organization, Repository, Dict[str, Branch]], List[Change[str]]]
-accessconfig_t = Dict[str, Union[Policy[Any], Dict[str, Union[Policy[Any], List[str]]]]]
+accessdict_t = Dict[str, Union[Policy[Any], List[str]]]
+accessconfig_t = Dict[str, Union[Policy[Any], accessdict_t]]
 singleconfig_t = Dict[str, Union[Policy[Any], List[repoproc_t], accessconfig_t]]
 repoconfig_t = Dict[Pattern[str], singleconfig_t]
 
