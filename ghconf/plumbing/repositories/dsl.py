@@ -31,12 +31,15 @@ re.compile(r'^a_repo_name$'): \
 
 """
 import copy
-from typing import List, Dict
+from typing import List, Dict, Callable
 from typing import Set
 from typing import Union
 
 from ghconf.plumbing.repositories import accessconfig_t, accessdict_t, singleconfig_t
 from ghconf.primitives import Permission, Policy, OVERWRITE, PermissionSetType
+
+
+_config_store = {}  # type: Dict[str, RepoConfig]
 
 
 class GitHubPermissionSet:
@@ -196,6 +199,34 @@ class RepoConfig:
         self.access.collaborators.give(perm, user)
         return self
 
+    def store(self, key: str) -> 'RepoConfig':
+        global _config_store
+        _config_store[key] = self
+        return self
+
 
 def take(cfg: RepoConfig) -> RepoConfig:
     return copy.deepcopy(cfg)
+
+
+class RepoMarkerType(Callable):
+    _lazy_marker_type: bool
+
+
+def load(key: str) -> Union[RepoConfig, RepoMarkerType[[], RepoConfig]]:
+    global _config_store
+
+    def lazy_repoconfig() -> RepoConfig:
+        return take(_config_store[key])
+    lazy_repoconfig._lazy_repo_marker = True
+
+    if key not in _config_store:
+        return lazy_repoconfig
+    return take(_config_store[key])
+
+
+def resolve_lazies(config: accessconfig_t):
+    global _config_store
+    for k, v in config.items():
+        if callable(v) and v._lazy_repo_marker:
+            v()
