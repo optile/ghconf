@@ -12,7 +12,6 @@ from typing import Optional
 from ghconf import cache
 from ghconf.base import GHConfModuleDef, ChangeSet, Change, ChangeMetadata, ChangeActions
 from ghconf.github import get_github
-from ghconf.plumbing.teams import Team
 from ghconf.primitives import Policy
 from ghconf.utils import highlight, print_debug, print_error
 
