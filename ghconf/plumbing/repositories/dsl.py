@@ -35,8 +35,9 @@ from typing import List, Dict, Callable, cast, Protocol
 from typing import Set
 from typing import Union
 
-from ghconf.plumbing.repositories import accessconfig_t, accessdict_t, singleconfig_t
-from ghconf.primitives import Permission, Policy, OVERWRITE, PermissionSetType
+from ghconf.plumbing.repositories import repoaccessconfig_t, repoaccessdict_t, singlerepoconfig_t
+from ghconf.plumbing.repositories import repoproc_t
+from ghconf.primitives import Permission, Policy, PermissionSetType
 from ghconf.utils.events import event_config_complete
 
 _config_store = {}  # type: Dict[str, RepoConfig]
@@ -65,28 +66,37 @@ class GitHubPermissionSet:
         else:
             self.admin = admin
 
-    def give_pull(self, identifier: str):
-        self.push.remove(identifier)
-        self.admin.remove(identifier)
+    def give_pull(self, identifier: str) -> None:
+        try:
+            self.push.remove(identifier)
+            self.admin.remove(identifier)
+        except KeyError:
+            pass
         self.pull.add(identifier)
 
-    def give_read(self, identifier: str):
+    def give_read(self, identifier: str) -> None:
         self.give_pull(identifier)
 
-    def give_push(self, identifier: str):
-        self.pull.remove(identifier)
-        self.admin.remove(identifier)
+    def give_push(self, identifier: str) -> None:
+        try:
+            self.pull.remove(identifier)
+            self.admin.remove(identifier)
+        except KeyError:
+            pass
         self.push.add(identifier)
 
-    def give_write(self, identifier: str):
+    def give_write(self, identifier: str) -> None:
         self.give_push(identifier)
 
-    def give_admin(self, identifier: str):
-        self.push.remove(identifier)
-        self.pull.remove(identifier)
+    def give_admin(self, identifier: str) -> None:
+        try:
+            self.push.remove(identifier)
+            self.pull.remove(identifier)
+        except KeyError:
+            pass
         self.admin.add(identifier)
 
-    def give(self, typ: Permission, identifier: str):
+    def give(self, typ: Permission, identifier: str) -> None:
         if typ == Permission.PULL:
             self.give_pull(identifier)
         elif typ == Permission.PUSH:
@@ -94,7 +104,7 @@ class GitHubPermissionSet:
         elif typ == Permission.ADMIN:
             self.give_admin(identifier)
 
-    def set_policy(self, typ: Permission, policy: Policy):
+    def set_policy(self, typ: Permission, policy: Policy) -> None:
         if typ == Permission.PULL:
             self.pull_policy = policy
         elif typ == Permission.PUSH:
@@ -102,7 +112,7 @@ class GitHubPermissionSet:
         elif typ == Permission.ADMIN:
             self.admin_policy = policy
 
-    def to_accessdict(self, *, override_type: PermissionSetType = None) -> Dict[str, accessdict_t]:
+    def to_accessdict(self, *, override_type: PermissionSetType = None) -> Dict[str, repoaccessdict_t]:
         typ = override_type if override_type is not None else self._type
         ret = {
             Permission.PUSH.value(typ): {
@@ -114,7 +124,7 @@ class GitHubPermissionSet:
             Permission.ADMIN.value(typ): {
                 "teams" if typ == PermissionSetType.TEAMS else "collaborators": list(self.admin),
             },
-        }  # type: Dict[str, accessdict_t]
+        }  # type: Dict[str, repoaccessdict_t]
         if self.pull_policy is not None:
             ret[Permission.PULL.value(typ)][
                 "team_policy" if typ == PermissionSetType.TEAMS else "collaborator_policy"
@@ -131,7 +141,7 @@ class GitHubPermissionSet:
 
 
 class RepoAccessConfig:
-    def __init__(self, *, default_policy: Policy = OVERWRITE, team_policy: Policy = None,
+    def __init__(self, *, default_policy: Policy = Policy.OVERWRITE, team_policy: Policy = None,
                  collaborator_policy: Policy = None) -> None:
         self.team_policy = team_policy
         self.collaborator_policy = collaborator_policy
@@ -139,7 +149,7 @@ class RepoAccessConfig:
         self.teams = GitHubPermissionSet(PermissionSetType.TEAMS)
         self.collaborators = GitHubPermissionSet(PermissionSetType.COLLABORATORS)
 
-    def to_accessconfig(self) -> accessconfig_t:
+    def to_accessconfig(self) -> repoaccessconfig_t:
         ret = self.teams.to_accessdict()
         ret.update(self.collaborators.to_accessdict())
         if self.team_policy is None:
@@ -157,20 +167,22 @@ class RepoAccessConfig:
 class RepoConfig:
     def __init__(self) -> None:
         self.access = RepoAccessConfig()
-        self.repo_procs = []
+        self.repo_procs = []  # type: List[repoproc_t]
 
-    def to_repoconfig(self) -> singleconfig_t:
+    def to_repoconfig(self) -> singlerepoconfig_t:
         return {
             "access": self.access.to_accessconfig(),
             "repo_procs": self.repo_procs
         }
 
-    def set_access(self, typ: Permission, *, teams: Union[List[str], Set[str]],
-                   collaborators: Union[List[str], Set[str]]) -> 'RepoConfig':
-        for t in teams:
-            self.access.teams.give(typ, t)
-        for c in collaborators:
-            self.access.collaborators.give(typ, c)
+    def set_access(self, typ: Permission, *, teams: Union[List[str], Set[str], None] = None,
+                   collaborators: Union[List[str], Set[str], None] = None) -> 'RepoConfig':
+        if teams:
+            for t in teams:
+                self.access.teams.give(typ, t)
+        if collaborators:
+            for c in collaborators:
+                self.access.collaborators.give(typ, c)
         return self
 
     def set_default_policy(self, policy: Policy) -> 'RepoConfig':
@@ -181,7 +193,7 @@ class RepoConfig:
         if typ is None:
             self.access.team_policy = policy
         else:
-            self.access.teams.set_policy(policy)
+            self.access.teams.set_policy(typ, policy)
         return self
 
     def set_collaborator_policy(self, policy: Policy, typ: Permission = None) -> 'RepoConfig':
@@ -202,6 +214,14 @@ class RepoConfig:
     def store(self, key: str) -> 'RepoConfig':
         global _config_store
         _config_store[key] = self
+        return self
+
+    def add_proc(self, proc: repoproc_t) -> 'RepoConfig':
+        self.repo_procs.append(proc)
+        return self
+
+    def set_procs(self, procs: List[repoproc_t]) -> 'RepoConfig':
+        self.repo_procs = procs
         return self
 
 

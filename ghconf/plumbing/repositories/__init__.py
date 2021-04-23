@@ -13,15 +13,15 @@ from ghconf import cache
 from ghconf.base import GHConfModuleDef, ChangeSet, Change, ChangeMetadata, ChangeActions
 from ghconf.github import get_github
 from ghconf.plumbing.teams import Team
-from ghconf.primitives import Policy, OVERWRITE
+from ghconf.primitives import Policy
 from ghconf.utils import highlight, print_debug, print_error
 
 
 repoproc_t = Callable[[Organization, Repository, Dict[str, Branch]], List[Change[str]]]
-accessdict_t = Dict[str, Union[Policy[Any], List[str]]]
-accessconfig_t = Dict[str, Union[Policy[Any], accessdict_t]]
-singleconfig_t = Dict[str, Union[Policy[Any], List[repoproc_t], accessconfig_t]]
-repoconfig_t = Dict[Pattern[str], singleconfig_t]
+repoaccessdict_t = Dict[str, Union[Policy[Any], List[str]]]
+repoaccessconfig_t = Dict[str, Union[Policy[Any], repoaccessdict_t]]
+singlerepoconfig_t = Dict[str, Union[Policy[Any], List[repoproc_t], repoaccessconfig_t]]
+repomoduleconfig_t = Dict[Pattern[str], singlerepoconfig_t]
 
 
 class AccessChangeFactory:
@@ -113,7 +113,7 @@ class AccessChangeFactory:
             return change.success()
         return change.skipped()
 
-    def diff_repo_access(self, repo: Repository, access_config: accessconfig_t) -> List[Change[str]]:
+    def diff_repo_access(self, repo: Repository, access_config: repoaccessconfig_t) -> List[Change[str]]:
         repo_teams = cache.lazy_get_or_store("repoteams_%s" % repo.name,
                                              lambda: list(repo.get_teams()))  # type: List[GithubTeam]
 
@@ -136,7 +136,7 @@ class AccessChangeFactory:
 
         ret = []  # type: List[Union[Change[str], Change[NamedUser]]]
 
-        default_pol = access_config.get("policy", OVERWRITE)
+        default_pol = access_config.get("policy", Policy.OVERWRITE)
 
         for role in current_perms.keys():
             team_pol = cast(Policy[str],

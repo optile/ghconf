@@ -7,7 +7,7 @@ from github.Team import Team as GithubTeam
 
 from ghconf import cache
 from ghconf.base import GHConfModuleDef, Change, ChangeSet, ChangeMetadata, ChangeActions
-from ghconf.primitives import Policy, EXTEND, Role, OVERWRITE
+from ghconf.primitives import Policy, Role
 from ghconf.utils import ErrorMessage, print_debug, print_warning, print_info, print_error, highlight
 
 
@@ -31,8 +31,8 @@ class BaseMember:
 
 
 class Team:
-    def __init__(self, name: str, description: str = "", team_policy: Policy['Team'] = EXTEND,
-                 member_policy: Policy['BaseMember'] = EXTEND, slug: Optional[str] = None,
+    def __init__(self, name: str, description: str = "", team_policy: Policy['Team'] = Policy.EXTEND,
+                 member_policy: Policy['BaseMember'] = Policy.EXTEND, slug: Optional[str] = None,
                  members: Optional[Set[BaseMember]] = None, subteams: Optional[Set['Team']] = None,
                  default_permission: str = "pull", privacy: str = "closed", id: Optional[int] = None) -> None:
         self.id = id
@@ -393,7 +393,7 @@ class TeamsConfig(GHConfModuleDef):
             executor=self.apply_admin_change,
         )
         admins = set([Admin(username=m.login, id=m.id) for m in org.get_members(role=Role.ADMIN)])
-        admin_changes = self.config['organization'].get('admin_policy', OVERWRITE).apply_to_set(
+        admin_changes = self.config['organization'].get('admin_policy', Policy.OVERWRITE).apply_to_set(
             meta=admin_meta, current=admins, plan=self.config['organization']['admins'])
 
         ret = [ChangeSet("{name}: Admins".format(name=__name__), admin_changes)]
@@ -406,7 +406,7 @@ class TeamsConfig(GHConfModuleDef):
                                for member in list(org.get_members(role="all"))])
         planned_members = set([BaseMember(username=member.username, role="unknown")
                                for member in self.flatten_member_structure(self.config["teams"])])
-        member_changes = self.config['organization'].get('member_policy', OVERWRITE).apply_to_set(
+        member_changes = self.config['organization'].get('member_policy', Policy.OVERWRITE).apply_to_set(
             meta=member_meta, current=current_members, plan=planned_members
         )
         # in this case we only keep removals, as member additions are handled by the team changes below
@@ -436,7 +436,7 @@ class TeamsConfig(GHConfModuleDef):
         )
         ret += [ChangeSet(
             source="{name}|{org}: Teams".format(name=__name__, org=org.name),
-            changes=self.config["organization"].get("team_policy", EXTEND).apply_to_set(
+            changes=self.config["organization"].get("team_policy", Policy.EXTEND).apply_to_set(
                 meta=team_meta, current=set(teammap.values()), plan=self.flatten_team_structure(self.config["teams"])),
         )]
 

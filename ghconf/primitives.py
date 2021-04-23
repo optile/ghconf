@@ -14,39 +14,41 @@ class UnknownPolicyIntention(Exception):
 ST = TypeVar('ST')
 
 
+class PolicyIntention(enum.Enum):
+    EXTEND = "extend"
+    OVERWRITE = "overwrite"
+
+
 class Policy(Generic[ST]):
     """
     A object that represents whether a configuration should be "patched" through the GitHub REST API, leaving
     currently existing configuration intact, or "overwritten", only leaving what is explicitly configured.
     """
-    EXTEND = "extend"
-    OVERWRITE = "overwrite"
+    OVERWRITE: 'Policy'
+    EXTEND: 'Policy'
 
-    def __init__(self, intention: str = "extend") -> None:
-        if intention not in [Policy.EXTEND, Policy.OVERWRITE]:
-            raise ValueError("Policy intention must be one of 'extend', 'overwrite'")
+    def __init__(self, intention: PolicyIntention = PolicyIntention.EXTEND) -> None:
+        if intention not in [PolicyIntention.EXTEND, PolicyIntention.OVERWRITE]:
+            raise ValueError("Policy intention must be one of EXTEND or OVERWRITE")
         self.intention = intention
 
     def __str__(self) -> str:
-        return self.intention
+        return str(self.intention)
 
     def apply_to_set(self, meta: ChangeMetadata, current: Set[ST], plan: Set[ST],
                      cosmetic_prefix: str = "",
                      single_change: bool = False) -> Union[List[Change[ST]], List[Change[Set[ST]]]]:
-        if self.intention == Policy.EXTEND:
+        if self.intention == PolicyIntention.EXTEND:
             to_add = plan.difference(current)
 
             if single_change:
                 return [
-                    cast(
-                        Change[Set[ST]],
-                        Change(
-                            meta=meta,
-                            action=ChangeActions.ADD,
-                            before=None,
-                            after=to_add,
-                            cosmetic_prefix=cosmetic_prefix,
-                        )
+                    Change[Optional[Set[ST]]](
+                        meta=meta,
+                        action=ChangeActions.ADD,
+                        before=None,
+                        after=to_add,
+                        cosmetic_prefix=cosmetic_prefix,
                     )
                 ]
             else:
@@ -57,7 +59,7 @@ class Policy(Generic[ST]):
                     after=addition,
                     cosmetic_prefix=cosmetic_prefix,
                 ) for addition in to_add]
-        elif self.intention == Policy.OVERWRITE:
+        elif self.intention == PolicyIntention.OVERWRITE:
             to_add = plan.difference(current)
             to_remove = current.difference(plan)
             noops = plan.intersection(current)
@@ -112,8 +114,8 @@ class Policy(Generic[ST]):
         raise UnknownPolicyIntention(self.intention)
 
 
-OVERWRITE = Policy(intention=Policy.OVERWRITE)  # type: Policy[Any]
-EXTEND = Policy(intention=Policy.EXTEND)  # type: Policy[Any]
+Policy.OVERWRITE = Policy(intention=PolicyIntention.OVERWRITE)
+Policy.EXTEND = Policy(intention=PolicyIntention.EXTEND)
 
 
 class Role:
