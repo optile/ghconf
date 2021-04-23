@@ -6,7 +6,7 @@ class Event:
         self.listeners = {}  # type: Dict[Callable[[Any], None]]
         self.id = 0
 
-    def fire(self, *args: Any, **kwargs: Any()):
+    def fire(self, *args: Any, **kwargs: Any):
         for l in self.listeners:
             l(*args, **kwargs)
 
