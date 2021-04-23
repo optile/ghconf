@@ -158,10 +158,10 @@ class Maintainer(BaseMember):
         super().__init__(username=username, role=Role.MAINTAINER, id=id)
 
 
-teamsconfig_t = Dict[str, Union[Set[Team], Dict[str, Union[Set[BaseMember], Policy[BaseMember], Policy[Team]]]]]
+teamsmoduleconfig_t = Dict[str, Union[Set[Team], Dict[str, Union[Set[BaseMember], Policy[BaseMember], Policy[Team]]]]]
 
 
-class TeamsConfig(GHConfModuleDef):
+class TeamsModule(GHConfModuleDef):
     applies_to_organization = True
 
     def __init__(self, config: Dict[str, Any]) -> None:

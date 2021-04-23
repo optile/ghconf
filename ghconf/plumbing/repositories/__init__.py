@@ -176,8 +176,8 @@ class AccessChangeFactory:
         return ret
 
 
-class RepositoriesConfig(GHConfModuleDef):
-    def __init__(self, repoconfig: repoconfig_t, default: Optional[singleconfig_t] = None) -> None:
+class RepoModule(GHConfModuleDef):
+    def __init__(self, repoconfig: repomoduleconfig_t, default: Optional[singlerepoconfig_t] = None) -> None:
         self.config = repoconfig
         self.default_config = default
         self._org_accessfactories = {}  # type: Dict[str, AccessChangeFactory]

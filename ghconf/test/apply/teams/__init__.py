@@ -1,12 +1,11 @@
 # -* encoding: utf-8 *-
-from ghconf.plumbing.teams import Admin, Team, Maintainer, Member, TeamsConfig
-from ghconf.plumbing.teams import teamsconfig_t
-from ghconf.primitives import EXTEND, OVERWRITE
+from ghconf.plumbing.teams import Admin, Team, Maintainer, Member, TeamsModule, teamsmoduleconfig_t
+from ghconf.primitives import Policy
 
 config = {
     "organization": {
-        "admin_policy": EXTEND,
-        "team_policy": EXTEND,
+        "admin_policy": Policy.EXTEND,
+        "team_policy": Policy.EXTEND,
         "admins": {
             Admin(username="jdelic"),
         },
@@ -15,7 +14,7 @@ config = {
         Team(
             name="TopLevelTest",
             description="A test",
-            member_policy=OVERWRITE,
+            member_policy=Policy.OVERWRITE,
             members={
                 Maintainer("jdelic"),
                 Member("ghconf-test1")
@@ -24,7 +23,7 @@ config = {
                 Team(
                     "Core Developers",
                     description="The Core Developers",
-                    member_policy=OVERWRITE,
+                    member_policy=Policy.OVERWRITE,
                     default_permission="push",
                     members={
                         Maintainer("ghconf-test1"),
@@ -34,7 +33,7 @@ config = {
             }
         ),
     }
-}  # type: teamsconfig_t
+}  # type: teamsmoduleconfig_t
 
 
-GhConfTestApplyTeams = TeamsConfig(config)
+GhConfTestApplyTeams = TeamsModule(config)
