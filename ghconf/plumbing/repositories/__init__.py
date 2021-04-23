@@ -1,5 +1,5 @@
 # -* encoding: utf-8 *-
-from typing import Pattern, Dict, List, Union, Set, Any, cast, Callable
+from typing import Pattern, Dict, List, Union, Set, Any, cast, Callable, TypedDict
 
 from github.GithubException import GithubException
 from github.Branch import Branch
@@ -17,10 +17,30 @@ from ghconf.primitives import Policy
 from ghconf.utils import highlight, print_debug, print_error
 
 
+# repoaccessdict_t = Dict[str, Union[Policy[Any], List[str]]]
+class repoaccessdict_t(TypedDict):
+    team_policy: Policy[Any]
+    collaborator_policy: Policy[Any]
+    teams: List[str]
+    collaborators: List[str]
+
+# repoaccessconfig_t = Dict[str, Union[Policy[Any], repoaccessdict_t]]
+class repoaccessconfig_t(TypedDict):
+    pull: repoaccessdict_t
+    push: repoaccessdict_t
+    admin: repoaccessdict_t
+    policy: Policy[Any]
+
+
 repoproc_t = Callable[[Organization, Repository, Dict[str, Branch]], List[Change[str]]]
-repoaccessdict_t = Dict[str, Union[Policy[Any], List[str]]]
-repoaccessconfig_t = Dict[str, Union[Policy[Any], repoaccessdict_t]]
-singlerepoconfig_t = Dict[str, Union[Policy[Any], List[repoproc_t], repoaccessconfig_t]]
+
+
+# singlerepoconfig_t = Dict[str, Union[Policy[Any], List[repoproc_t], repoaccessconfig_t]]
+class singlerepoconfig_t(TypedDict):
+    access: repoaccessconfig_t
+    repo_procs: List[repoproc_t]
+
+
 repomoduleconfig_t = Dict[Pattern[str], singlerepoconfig_t]
 
 
@@ -28,7 +48,7 @@ class AccessChangeFactory:
     def __init__(self, org: Organization) -> None:
         super().__init__()
         self.org = org
-        self._org_teams = None  # type: Optional[Dict[str, Team]]
+        self._org_teams = None  # type: Optional[Dict[str, GithubTeam]]
 
     @property
     def org_teams(self) -> Dict[str, GithubTeam]:
@@ -113,7 +133,8 @@ class AccessChangeFactory:
             return change.success()
         return change.skipped()
 
-    def diff_repo_access(self, repo: Repository, access_config: repoaccessconfig_t) -> List[Change[str]]:
+    def diff_repo_access(self, repo: Repository,
+                         access_config: repoaccessconfig_t) -> List[Union[Change[str], Change[NamedUser]]]:
         repo_teams = cache.lazy_get_or_store("repoteams_%s" % repo.name,
                                              lambda: list(repo.get_teams()))  # type: List[GithubTeam]
 
@@ -199,7 +220,7 @@ class RepoModule(GHConfModuleDef):
                 return False
         return True
 
-    def apply_config(self, config: Dict[Any, Any], org: Organization, repo: Repository,
+    def apply_config(self, config: singlerepoconfig_t, org: Organization, repo: Repository,
                      repo_branches: List[Branch]) -> List[ChangeSet]:
         ret = []
         if "repo_procs" in config:
@@ -208,7 +229,7 @@ class RepoModule(GHConfModuleDef):
             }
 
             changes = []  # type: List[Change[str]]
-            for proc in config["repo_procs"]:  # type: repoproc_t
+            for proc in cast(List[repoproc_t], config["repo_procs"]):  # type: repoproc_t
                 changes += proc(org, repo, branches)
 
             if changes:
@@ -221,13 +242,18 @@ class RepoModule(GHConfModuleDef):
         if "access" in config:
             print_debug("Building %s changes for repo %s" % (highlight("access"), repo.name))
 
-            if org.name not in self._org_accessfactories:
+            if org.name is None:
+                orgname = "None"
+            else:
+                orgname = org.name
+
+            if orgname not in self._org_accessfactories:
                 # poor man's caching for AccessChangeFactory.org_teams
-                self._org_accessfactories[org.name] = AccessChangeFactory(org)
+                self._org_accessfactories[orgname] = AccessChangeFactory(org)
 
             cs = ChangeSet(
                 "Repo {name}: Access".format(name=repo.name),
-                self._org_accessfactories[org.name].diff_repo_access(repo, config["access"]),
+                self._org_accessfactories[orgname].diff_repo_access(repo, config["access"]),
                 description="Changes to access permissions"
             )
             ret.append(cs)

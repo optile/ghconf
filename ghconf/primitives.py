@@ -35,6 +35,9 @@ class Policy(Generic[ST]):
     def __str__(self) -> str:
         return str(self.intention)
 
+    def __repr__(self) -> str:
+        return "Policy<%s>" % self.intention
+
     def apply_to_set(self, meta: ChangeMetadata, current: Set[ST], plan: Set[ST],
                      cosmetic_prefix: str = "",
                      single_change: bool = False) -> Union[List[Change[ST]], List[Change[Set[ST]]]]:
@@ -43,7 +46,7 @@ class Policy(Generic[ST]):
 
             if single_change:
                 return [
-                    Change[Optional[Set[ST]]](
+                    Change[Set[ST]](
                         meta=meta,
                         action=ChangeActions.ADD,
                         before=None,
@@ -180,12 +183,18 @@ class Permission:
             return Permission.collaborator_permission_from_unified(self.permstr)
         raise ValueError("Not a valid PermissionSetType %s" % str(typ))
 
-    def __eq__(self, other: Union['Permission', str]) -> bool:
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, Permission):
             return self.value(PermissionSetType.TEAMS) == other.value(PermissionSetType.TEAMS)
         elif isinstance(other, str):
             return self.value(PermissionSetType.TEAMS) == other or self.value(PermissionSetType.COLLABORATORS) == other
         return False
+
+    def __str__(self) -> str:
+        return self.permstr
+
+    def __repr__(self) -> str:
+        return "Permission<%s>" % self.permstr
 
 
 Permission.PUSH = Permission("push")

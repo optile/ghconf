@@ -38,6 +38,7 @@ from typing import Union
 from ghconf.plumbing.repositories import repoaccessconfig_t, repoaccessdict_t, singlerepoconfig_t
 from ghconf.plumbing.repositories import repoproc_t
 from ghconf.primitives import Permission, Policy, PermissionSetType
+from ghconf.utils import print_debug
 from ghconf.utils.events import event_config_complete
 
 _config_store = {}  # type: Dict[str, RepoConfig]
@@ -112,32 +113,39 @@ class GitHubPermissionSet:
         elif typ == Permission.ADMIN:
             self.admin_policy = policy
 
-    def to_accessdict(self, *, override_type: PermissionSetType = None) -> Dict[str, repoaccessdict_t]:
+    def to_accessconfig(self, *, default_policy: Policy, override_type: PermissionSetType = None) -> repoaccessconfig_t:
         typ = override_type if override_type is not None else self._type
+        typkey = "teams" if typ == PermissionSetType.TEAMS else "collaborators"
+
+        # it's ok to use for_teams here, as accessdicts use standardized push, pull, admin
+        # for teams and collaborators alike and ghconf converts to the correct GitHub permission
+        # (read, write, push, pull) on-the-fly later
         ret = {
-            Permission.PUSH.value(typ): {
-                "teams" if typ == PermissionSetType.TEAMS else "collaborators": list(self.push),
+            Permission.PUSH.for_teams(): {
+                typkey: list(self.push),  # type: ignore
             },
-            Permission.PULL.value(typ): {
-                "teams" if typ == PermissionSetType.TEAMS else "collaborators": list(self.pull),
+            Permission.PULL.for_teams(): {
+                typkey: list(self.pull),  # type: ignore
             },
-            Permission.ADMIN.value(typ): {
-                "teams" if typ == PermissionSetType.TEAMS else "collaborators": list(self.admin),
+            Permission.ADMIN.for_teams(): {
+                typkey: list(self.admin),  # type: ignore
             },
-        }  # type: Dict[str, repoaccessdict_t]
-        if self.pull_policy is not None:
-            ret[Permission.PULL.value(typ)][
-                "team_policy" if typ == PermissionSetType.TEAMS else "collaborator_policy"
-            ] = self.pull_policy
-        if self.push_policy is not None:
-            ret[Permission.PUSH.value(typ)][
-                "team_policy" if typ == PermissionSetType.TEAMS else "collaborator_policy"
-            ] = self.pull_policy
-        if self.admin_policy is not None:
-            ret[Permission.ADMIN.value(typ)][
-                "team_policy" if typ == PermissionSetType.TEAMS else "collaborator_policy"
-            ] = self.admin_policy
-        return ret
+        }  # type: ignore
+
+        poltypkey = "team_policy" if typ == PermissionSetType.TEAMS else "collaborator_policy"
+        if self.pull_policy is None:
+            ret[Permission.PULL.for_teams()][poltypkey] = default_policy  # type: ignore
+        else:
+            ret[Permission.PULL.for_teams()][poltypkey] = self.pull_policy  # type: ignore
+        if self.push_policy is None:
+            ret[Permission.PUSH.for_teams()][poltypkey] = default_policy  # type: ignore
+        else:
+            ret[Permission.PUSH.for_teams()][poltypkey] = self.push_policy  # type: ignore
+        if self.admin_policy is None:
+            ret[Permission.ADMIN.for_teams()][poltypkey] = default_policy  # type: ignore
+        else:
+            ret[Permission.ADMIN.for_teams()][poltypkey] = self.admin_policy  # type: ignore
+        return cast(repoaccessconfig_t, ret)
 
 
 class RepoAccessConfig:
@@ -150,18 +158,13 @@ class RepoAccessConfig:
         self.collaborators = GitHubPermissionSet(PermissionSetType.COLLABORATORS)
 
     def to_accessconfig(self) -> repoaccessconfig_t:
-        ret = self.teams.to_accessdict()
-        ret.update(self.collaborators.to_accessdict())
-        if self.team_policy is None:
-            ret["team_policy"] = self.default_policy
-        else:
-            ret["team_policy"] = self.team_policy
+        ret = self.teams.to_accessconfig(default_policy=self.default_policy)
 
-        if self.collaborator_policy is None:
-            ret["collaborator_policy"] = self.default_policy
-        else:
-            ret["collaborator_policy"] = self.collaborator_policy
-        return ret
+        # this works because to_accessconfig returns a dict with all top level keys
+        # even if they're empty
+        for k in ret:
+            ret[k].update(self.collaborators.to_accessconfig(default_policy=self.default_policy)[k])  # type: ignore
+        return cast(repoaccessconfig_t, ret)
 
 
 class RepoConfig:
@@ -170,10 +173,11 @@ class RepoConfig:
         self.repo_procs = []  # type: List[repoproc_t]
 
     def to_repoconfig(self) -> singlerepoconfig_t:
-        return {
+        ret = {
             "access": self.access.to_accessconfig(),
             "repo_procs": self.repo_procs
         }
+        return ret
 
     def set_access(self, typ: Permission, *, teams: Union[List[str], Set[str], None] = None,
                    collaborators: Union[List[str], Set[str], None] = None) -> 'RepoConfig':

@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timezone
 from types import ModuleType
 from typing import Callable, Any,  cast, Dict
+from typing import Union
 
 import github
 import urllib3
@@ -77,7 +78,7 @@ def handle_rate_limits(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) 
 @aspectlib.Aspect(bind=True)
 def retry_on_server_failure(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     # yes, I know about aspectlib.contrib.retry(), but this one logs
-    e = None  # type: GithubException
+    e = None  # type: Union[GithubException, None]
     for i in range(4):
         if i < 3:
             try:

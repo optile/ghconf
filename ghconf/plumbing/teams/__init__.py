@@ -252,7 +252,7 @@ class TeamsModule(GHConfModuleDef):
 
     @staticmethod
     def apply_member_removal(change: Change[BaseMember], org: Organization) -> Change[BaseMember]:
-        if change.action != ChangeActions.REMOVE:
+        if change.action != ChangeActions.REMOVE or change.before is None:
             print_debug("Unsupported change action for member removal: %s" % change.action)
             return change.skipped()
 
