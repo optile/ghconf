@@ -32,7 +32,7 @@ class repoaccessconfig_t(TypedDict):
     policy: Policy[Any]
 
 
-repoproc_t = Callable[[Organization, Repository, Dict[str, Branch]], List[Change[str]]]
+repoproc_t = Callable[[Organization, Repository, Dict[str, Branch]], List[Change[Any]]]
 
 
 # singlerepoconfig_t = Dict[str, Union[Policy[Any], List[repoproc_t], repoaccessconfig_t]]

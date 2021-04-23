@@ -173,10 +173,10 @@ class RepoConfig:
         self.repo_procs = []  # type: List[repoproc_t]
 
     def to_repoconfig(self) -> singlerepoconfig_t:
-        ret = {
-            "access": self.access.to_accessconfig(),
-            "repo_procs": self.repo_procs
-        }
+        ret = singlerepoconfig_t(
+            access=self.access.to_accessconfig(),
+            repo_procs=self.repo_procs
+        )
         return ret
 
     def set_access(self, typ: Permission, *, teams: Union[List[str], Set[str], None] = None,
