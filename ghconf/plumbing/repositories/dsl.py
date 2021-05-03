@@ -31,15 +31,15 @@ re.compile(r'^a_repo_name$'): \
 
 """
 import copy
-from typing import List, Dict, Callable, cast, Protocol
+from typing import List, Dict, Callable, cast, Protocol, TypeVar, Generic, Any
 from typing import Set
+from typing import Tuple
 from typing import Union
 
 from ghconf.plumbing.repositories import repoaccessconfig_t, repoaccessdict_t, singlerepoconfig_t
 from ghconf.plumbing.repositories import repoproc_t
 from ghconf.primitives import Permission, Policy, PermissionSetType
-from ghconf.utils import print_debug
-from ghconf.utils.events import event_config_complete
+
 
 _config_store = {}  # type: Dict[str, RepoConfig]
 
@@ -148,6 +148,23 @@ class GitHubPermissionSet:
         return cast(repoaccessconfig_t, ret)
 
 
+FT = TypeVar("FT", bound=Callable[..., repoproc_t])
+
+
+class Facet(Generic[FT]):
+    def __init__(self, facet: FT, configkey: str, *default: Any, **defaultkw: Any) -> None:
+        self.facet = facet
+        self.configkey = configkey
+        self.default = (default, defaultkw)
+
+    def __call__(self, facet_configs: Dict[str, Tuple[Tuple[Any], Dict[str, Any]]]) -> repoproc_t:
+        if self.configkey in facet_configs:
+            args, kwargs = facet_configs[self.configkey]
+        else:
+            args, kwargs = self.default
+        return self.facet(*args, **kwargs)
+
+
 class RepoAccessConfig:
     def __init__(self, *, default_policy: Policy = Policy.OVERWRITE, team_policy: Policy = None,
                  collaborator_policy: Policy = None) -> None:
@@ -170,12 +187,20 @@ class RepoAccessConfig:
 class RepoConfig:
     def __init__(self) -> None:
         self.access = RepoAccessConfig()
-        self.repo_procs = []  # type: List[repoproc_t]
+        self.facet_configs = {}  # type: Dict[str, Tuple[Tuple[Any], Dict[str, Any]]]
+        self.repo_procs = []  # type: List[Union[repoproc_t, Facet]]
 
     def to_repoconfig(self) -> singlerepoconfig_t:
+        eval_procs = []  # type: List[repoproc_t]
+        for prc in self.repo_procs:
+            if isinstance(prc, Facet):
+                eval_procs.append(prc(self.facet_configs))
+            else:
+                eval_procs.append(prc)
+
         ret = singlerepoconfig_t(
             access=self.access.to_accessconfig(),
-            repo_procs=self.repo_procs
+            repo_procs=eval_procs
         )
         return ret
 
@@ -220,12 +245,17 @@ class RepoConfig:
         _config_store[key] = self
         return self
 
-    def add_proc(self, proc: repoproc_t) -> 'RepoConfig':
-        self.repo_procs.append(proc)
+    def add_procs(self, *procs: Union[repoproc_t, Facet]) -> 'RepoConfig':
+        for p in procs:
+            self.repo_procs.append(p)
         return self
 
-    def set_procs(self, procs: List[repoproc_t]) -> 'RepoConfig':
+    def set_procs(self, *procs: Union[repoproc_t, Facet]) -> 'RepoConfig':
         self.repo_procs = procs
+        return self
+
+    def set_facet_config(self, key: str, *args: Any, **kwargs: Any) -> 'RepoConfig':
+        self.facet_configs[key] = (args, kwargs)
         return self
 
 
