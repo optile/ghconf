@@ -63,13 +63,13 @@ def progressbar(total: Optional[int] = None) -> tqdm:
         _pbar.ghconf_close = _pbar.close
 
         # this is so hacky.. it'll do at most for this command-line tool.
-        def override_close() -> None:
+        def override_close(_self) -> None:
             global _pbar
             if _pbar:
                 _pbar.ghconf_close()
                 _pbar = None
 
-        _pbar.close = override_close
+        _pbar.close = override_close.__get__(_pbar, tqdm)
     return _pbar
 
 
