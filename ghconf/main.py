@@ -298,15 +298,14 @@ def main() -> None:
         print_info("=" * (shutil.get_terminal_size()[0] - 15))
         ###
         changedict = assemble_changedict(args, org)
-        if args.execute:
-            apply_changedict(changedict)
-        else:
+        if not args.execute:
             print_changedict(changedict)
             choice = prompt("Proceed and execute? [y/N] ", choices=["y", "n"], default="n")
-            if choice == "y":
-                apply_changedict(changedict)
-            else:
+            if choice != "y":
                 print_info("Execution cancelled")
+                return
+
+        apply_changedict(changedict)
 
 
 def app() -> None:
