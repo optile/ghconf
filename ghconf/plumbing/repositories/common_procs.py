@@ -142,20 +142,17 @@ def _set_dismiss_stale_approvals(branch: Branch, dismiss_approvals: bool = True)
             return change.failure()
         return change.success()
 
-    change_needed = False
+    change_needed = True
     rpr = None  # type: Optional[RequiredPullRequestReviews]
 
     if branch.protected:
         prot = branch.get_protection()
-        rpr = prot.required_pull_request_reviews
-        if rpr.dismiss_stale_reviews == dismiss_approvals:
-            print_debug("Branch %s already %s stale reviews" %
-                        (highlight(branch.name), highlight("dismisses" if dismiss_approvals else "allows")))
-            change_needed = False
-        else:
-            change_needed = True
-    else:
-        change_needed = True
+        if prot and prot.required_pull_request_reviews:
+            rpr = prot.required_pull_request_reviews
+            if rpr.dismiss_stale_reviews == dismiss_approvals:
+                print_debug("Branch %s already %s stale reviews" %
+                            (highlight(branch.name), highlight("dismisses" if dismiss_approvals else "allows")))
+                change_needed = False
 
     if change_needed:
         change = Change(
@@ -236,6 +233,7 @@ def _protect_branch(branch: Branch, required_review_count: int,
     change_needed = False
     prot = None
     current_reqcount = 0
+    rpr = None  # type: Union[RequiredPullRequestReviews, None]
     current_corstate = False
 
     # The GitHub API will gladly return a required review count > 0 for a branch that had a required review
@@ -244,20 +242,16 @@ def _protect_branch(branch: Branch, required_review_count: int,
     if branch.protected:
         prot = branch.get_protection()
         if prot and prot.required_pull_request_reviews:
-            rpr = prot.required_pull_request_reviews  # type: RequiredPullRequestReviews
-            if rpr.required_approving_review_count == required_review_count:
-                print_debug("Branch %s already requires %s reviews" %
-                            (highlight(branch.name), highlight(str(required_review_count))))
+            rpr = prot.required_pull_request_reviews
+            if (rpr.required_approving_review_count == required_review_count and
+                    rpr.require_code_owner_reviews == require_code_owner_review):
+                print_debug("Branch %s already requires %s reviews and %s require code owner review" %
+                            (highlight(branch.name), highlight(str(required_review_count)),
+                             "does" if require_code_owner_review else "does not"))
                 change_needed = False
             else:
                 current_reqcount = rpr.required_approving_review_count
-                change_needed = True
-
-            if rpr.require_code_owner_reviews == require_code_owner_review:
-                print_debug("Branch %s already%srequires code owner reviews" %
-                            (highlight(branch.name), " " if require_code_owner_review else " does not "))
-                change_needed = False
-            else:
+                current_corstate = rpr.require_code_owner_reviews
                 change_needed = True
         else:
             if required_review_count == 0 and (prot is None or prot.required_pull_request_reviews is None):
@@ -278,7 +272,8 @@ def _protect_branch(branch: Branch, required_review_count: int,
             ),
             action=ChangeActions.REPLACE if branch.protected else ChangeActions.ADD,
             before="Require %s reviews (code owner review=%s)" %
-                   (current_reqcount, str(rpr.require_code_owner_reviews)) if branch.protected else "No protection",
+                   (current_reqcount, str(rpr.require_code_owner_reviews)) if branch.protected and rpr else
+                   "No protection",
             after="Require %s reviews (code owner review=%s)" % (required_review_count, str(require_code_owner_review)),
             cosmetic_prefix="Protect branch<%s>:" % branch.name
         )
