@@ -46,10 +46,10 @@ def make_develop_default(org: Organization, repo: Repository, branches: Dict[str
     return []
 
 
-def __execute_master_default(change: Change[str], repo: Repository) -> Change[str]:
-    print_debug("[%s] Enforcing master as the default branch" % highlight(repo.name))
+def __execute_master_default(change: Change[str], main_branch_name: str, repo: Repository) -> Change[str]:
+    print_debug("[%s] Enforcing %s as the default branch" % (highlight(repo.name), highlight(main_branch_name)))
     try:
-        repo.edit(default_branch="master")
+        repo.edit(default_branch=main_branch_name)
     except GithubException:
         return change.failure()
 
@@ -58,17 +58,23 @@ def __execute_master_default(change: Change[str], repo: Repository) -> Change[st
 
 def force_master_default(org: Organization, repo: Repository, branches: Dict[str, Branch]) -> List[Change[str]]:
     """
-    Makes ``master`` the default branch if it exists
+    Makes ``master`` or ``main`` the default branch if it exists
     """
-    if repo.default_branch != 'master' and 'master' in branches and not repo.archived:
+    main_or_master = None
+    if repo.default_branch != "master" and "master" in branches:
+        main_or_master = "master"
+    elif repo.default_branch != "main" and "main" in branches:
+        main_or_master = "main"
+
+    if main_or_master and not repo.archived:
         change = Change(
             meta=ChangeMetadata(
                 executor=__execute_master_default,
-                params=[repo],
+                params=[main_or_master, repo],
             ),
             action=ChangeActions.REPLACE,
             before=repo.default_branch,
-            after="master",
+            after=main_or_master,
             cosmetic_prefix="Default:"
         )
         return [change]
@@ -80,21 +86,27 @@ def force_master_default_if_no_develop(org: Organization, repo: Repository,
     """
     Makes ``master`` the default branch on a repo unless ``develop`` exists
     """
-    if repo.default_branch != 'develop' and repo.default_branch != 'master' and not repo.archived:
-        if "develop" not in branches and "master" in branches:
+    main_or_master = None
+    if repo.default_branch != "master" and "master" in branches:
+        main_or_master = "master"
+    elif repo.default_branch != "main" and "main" in branches:
+        main_or_master = "main"
+
+    if repo.default_branch != "develop" and main_or_master and not repo.archived:
+        if "develop" not in branches and ("master" in branches or "main" in branches):
             change = Change(
                 meta=ChangeMetadata(
                     executor=__execute_master_default,
-                    params=[repo],
+                    params=[main_or_master, repo],
                 ),
                 action=ChangeActions.REPLACE,
                 before=repo.default_branch,
-                after="master",
+                after=main_or_master,
                 cosmetic_prefix="Default:"
             )
             return [change]
-        elif "develop" not in branches and "master" not in branches:
-            print_debug("Repo %s has neither 'develop' or 'master'" % repo.name)
+        elif "develop" not in branches and "master" not in branches and "main" not in branches:
+            print_debug("Repo %s has neither 'develop' or 'master' or 'main'" % repo.name)
             return []
         else:
             return []
@@ -130,20 +142,17 @@ def _set_dismiss_stale_approvals(branch: Branch, dismiss_approvals: bool = True)
             return change.failure()
         return change.success()
 
-    change_needed = False
+    change_needed = True
     rpr = None  # type: Optional[RequiredPullRequestReviews]
 
     if branch.protected:
         prot = branch.get_protection()
-        rpr = prot.required_pull_request_reviews
-        if rpr.dismiss_stale_reviews == dismiss_approvals:
-            print_debug("Branch %s already %s stale reviews" %
-                        (highlight(branch.name), highlight("dismisses" if dismiss_approvals else "allows")))
-            change_needed = False
-        else:
-            change_needed = True
-    else:
-        change_needed = True
+        if prot and prot.required_pull_request_reviews:
+            rpr = prot.required_pull_request_reviews
+            if rpr.dismiss_stale_reviews == dismiss_approvals:
+                print_debug("Branch %s already %s stale reviews" %
+                            (highlight(branch.name), highlight("dismisses" if dismiss_approvals else "allows")))
+                change_needed = False
 
     if change_needed:
         change = Change(
@@ -188,22 +197,33 @@ def force_branch_stale_review_dismissal(branch_name: str) -> repoproc_t:
     return _force_branch_stale_review_dismissal
 
 
-def _protect_branch(branch: Branch, required_review_count: int) -> List[Change[str]]:
+def _protect_branch(branch: Branch, required_review_count: int,
+                    require_code_owner_review: Optional[bool] = None) -> List[Change[str]]:
     def execute_review_protection(change: Change[str], branch: Branch,
-                                  existing_protection: Optional[BranchProtection], review_count: int) -> Change[str]:
+                                  existing_protection: Optional[BranchProtection], review_count: int,
+                                  require_code_owner_review: bool) -> Change[str]:
         try:
             if branch.protected and existing_protection and existing_protection.required_pull_request_reviews:
                 if review_count > 0:
-                    print_debug("Replacing review protection on branch %s (%s reviews)" %
-                                (highlight(branch.name), str(review_count)))
-                    branch.edit_required_pull_request_reviews(required_approving_review_count=review_count)
+                    print_debug("Replacing review protection on branch %s (%s reviews, owner_reviews=%s)" %
+                                (highlight(branch.name), str(review_count), str(require_code_owner_review)))
+                    if require_code_owner_review is None:
+                        branch.edit_required_pull_request_reviews(
+                            required_approving_review_count=review_count
+                        )
+                    else:
+                        branch.edit_required_pull_request_reviews(
+                            required_approving_review_count=review_count,
+                            require_code_owner_reviews=require_code_owner_review
+                        )
                 else:
                     print_debug("Removing review protection on branch: %s" % highlight(branch.name))
                     branch.remove_required_pull_request_reviews()
             elif review_count > 0:
-                print_debug("Adding review protection on branch: %s (%s reviews)" %
-                            (highlight(branch.name), str(review_count)))
-                safe_branch_edit_protection(branch, required_approving_review_count=review_count)
+                print_debug("Adding review protection on branch: %s (%s reviews, code owner review=%s)" %
+                            (highlight(branch.name), str(review_count), str(require_code_owner_review)))
+                safe_branch_edit_protection(branch, required_approving_review_count=review_count,
+                                            require_code_owner_reviews=require_code_owner_review)
         except GithubException as e:
             print_error("Can't set review protection on branch %s to %s: %s" %
                         (highlight(branch.name), str(review_count), str(e)))
@@ -213,6 +233,8 @@ def _protect_branch(branch: Branch, required_review_count: int) -> List[Change[s
     change_needed = False
     prot = None
     current_reqcount = 0
+    rpr = None  # type: Union[RequiredPullRequestReviews, None]
+    current_corstate = False
 
     # The GitHub API will gladly return a required review count > 0 for a branch that had a required review
     # count previously, but it has now been turned off. So we need to correlate a bunch of information to find
@@ -220,13 +242,16 @@ def _protect_branch(branch: Branch, required_review_count: int) -> List[Change[s
     if branch.protected:
         prot = branch.get_protection()
         if prot and prot.required_pull_request_reviews:
-            rpr = prot.required_pull_request_reviews  # type: RequiredPullRequestReviews
-            if rpr.required_approving_review_count == required_review_count:
-                print_debug("Branch %s already requires %s reviews" %
-                            (highlight(branch.name), highlight(str(required_review_count))))
+            rpr = prot.required_pull_request_reviews
+            if (rpr.required_approving_review_count == required_review_count and
+                    rpr.require_code_owner_reviews == require_code_owner_review):
+                print_debug("Branch %s already requires %s reviews and %s require code owner review" %
+                            (highlight(branch.name), highlight(str(required_review_count)),
+                             "does" if require_code_owner_review else "does not"))
                 change_needed = False
             else:
                 current_reqcount = rpr.required_approving_review_count
+                current_corstate = rpr.require_code_owner_reviews
                 change_needed = True
         else:
             if required_review_count == 0 and (prot is None or prot.required_pull_request_reviews is None):
@@ -235,6 +260,7 @@ def _protect_branch(branch: Branch, required_review_count: int) -> List[Change[s
                 change_needed = False
             else:
                 change_needed = True
+            # don't have to check for require_code_owner_review here if no branch protection is requested anyway
     else:
         change_needed = True
 
@@ -242,18 +268,20 @@ def _protect_branch(branch: Branch, required_review_count: int) -> List[Change[s
         change = Change(
             meta=ChangeMetadata(
                 executor=execute_review_protection,
-                params=[branch, prot, required_review_count]
+                params=[branch, prot, required_review_count, require_code_owner_review]
             ),
             action=ChangeActions.REPLACE if branch.protected else ChangeActions.ADD,
-            before="Require %s reviews" % current_reqcount if branch.protected else "No protection",
-            after="Require %s reviews" % required_review_count,
+            before="Require %s reviews (code owner review=%s)" %
+                   (current_reqcount, str(rpr.require_code_owner_reviews)) if branch.protected and rpr else
+                   "No protection",
+            after="Require %s reviews (code owner review=%s)" % (required_review_count, str(require_code_owner_review)),
             cosmetic_prefix="Protect branch<%s>:" % branch.name
         )
         return [change]
     return []
 
 
-def protect_pr_branch_with_approvals(count: int = 1) -> repoproc_t:
+def protect_pr_branch_with_approvals(count: int = 1, require_code_owner_review: bool = False) -> repoproc_t:
     """
     Requires ``count`` number of reviews on PRs on the repo's default branch/
     """
@@ -261,20 +289,21 @@ def protect_pr_branch_with_approvals(count: int = 1) -> repoproc_t:
                                           branches: Dict[str, Branch]) -> List[Change[str]]:
         prb = get_pr_branch(repo, branches)
         if prb:
-            return _protect_branch(prb, count)
+            return _protect_branch(prb, count, require_code_owner_review)
         else:
             return []
     return _protect_pr_branch_with_approvals
 
 
-def protect_branch_with_approvals(branch_name: str, count: int = 1) -> repoproc_t:
+def protect_branch_with_approvals(branch_name: str, count: int = 1,
+                                  require_code_owner_review: bool = False) -> repoproc_t:
     """
     Requires ``count`` number of reviews on PRs on the specified branch
     """
     def _protect_branch_with_approvals(org: Organization, repo: Repository,
                                        branches: Dict[str, Branch]) -> List[Change[str]]:
         if branch_name in branches:
-            return _protect_branch(branches[branch_name], count)
+            return _protect_branch(branches[branch_name], count, require_code_owner_review)
         else:
             print_warning("Requested to protect branch %s on repo %s, but the branch does not exist." %
                           (highlight(branch_name), highlight(repo.name)))
