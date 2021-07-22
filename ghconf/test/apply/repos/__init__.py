@@ -23,13 +23,13 @@ config = {
             Permission.PULL,
             teams=['TopLevelTest']
         )
-        .set_procs([
+        .set_procs(
             common_procs.protect_pr_branch_with_approvals(1),
             common_procs.set_repo_features(),
             common_procs.force_master_default_if_no_develop,
             common_procs.make_develop_default,
             common_procs.protect_pr_branch_with_tests_if_any_exist,
-        ])
+        )
         .store("test").to_repoconfig(),
 }  # type: repomoduleconfig_t
 
