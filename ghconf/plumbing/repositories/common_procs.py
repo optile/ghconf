@@ -406,17 +406,20 @@ def protect_pr_branch_with_tests_if_any_exist(org: Organization, repo: Repositor
     """
     def execute_test_protection(change: Change[str], branch: Branch, existing_checks: Set[str],
                                 known_status_checks: Set[str], known_checkruns: Set[str]) -> Change[str]:
+
+        all_known_checks = known_status_checks | known_checkruns  # For convenience later to treat them as a single set
+
         print_debug("[%s] Changing status checks on branch '%s' to [%s]" %
                     (highlight(repo.name), highlight(branch.name),
-                     highlight(", ".join(list(known_status_checks | known_checkruns)))))
+                     highlight(", ".join(list(all_known_checks)))))
         try:
             if existing_checks:
-                branch.edit_required_status_checks(strict=True, contexts=list(known_status_checks | known_checkruns))
+                branch.edit_required_status_checks(strict=True, contexts=list(all_known_checks))
             else:
                 safe_branch_edit_protection(
                     branch,
                     strict=True,
-                    contexts=list(known_status_checks | known_checkruns),
+                    contexts=list(all_known_checks),
                 )
         except GithubException as e:
             print_error("Can't edit required status checks on repo %s branch %s: %s" %
@@ -461,12 +464,13 @@ def protect_pr_branch_with_tests_if_any_exist(org: Organization, repo: Repositor
                             (commit.sha, checkrun.completed_at, checkrun.name, checkrun.app))
             known_checkruns.add(checkrun.name)
 
-    print_debug("Found status checks [%s]" % ", ".join(known_status_checks | known_checkruns))
+    all_known_checks = known_status_checks | known_checkruns  # For convenience later to treat them as a single set
+    print_debug("Found status checks [%s]" % ", ".join(all_known_checks))
 
-    if known_status_checks | known_checkruns and known_status_checks | known_checkruns != existing_checks:
+    if all_known_checks and all_known_checks != existing_checks:
         # add all known checks as required checks
         print_debug('Adding checks [%s] to branch %s on repo %s' %
-                    (highlight(", ".join((known_status_checks | known_checkruns) - existing_checks)),
+                    (highlight(", ".join((all_known_checks) - existing_checks)),
                      highlight(prb.name), highlight(repo.name)))
         return [Change(
             meta=ChangeMetadata(
@@ -475,7 +479,7 @@ def protect_pr_branch_with_tests_if_any_exist(org: Organization, repo: Repositor
             ),
             action=ChangeActions.REPLACE if existing_checks else ChangeActions.ADD,
             before="%s checks" % len(existing_checks) if existing_checks else "No checks",
-            after="%s checks" % len(known_status_checks | known_checkruns),
+            after="%s checks" % len(all_known_checks),
         )]
     return []
 
