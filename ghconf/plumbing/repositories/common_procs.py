@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 from typing import List, Dict, Union, Set, Optional, TypeVar
 
+from github.CheckRun import CheckRun
 from github.NamedUser import NamedUser
 from github.GithubObject import NotSet, _NotSetType
 from github.RequiredPullRequestReviews import RequiredPullRequestReviews
@@ -404,17 +405,21 @@ def protect_pr_branch_with_tests_if_any_exist(org: Organization, repo: Repositor
     7 days, make them the new required tests on the repo.
     """
     def execute_test_protection(change: Change[str], branch: Branch, existing_checks: Set[str],
-                                known_checks: Set[str]) -> Change[str]:
+                                known_status_checks: Set[str], known_checkruns: Set[str]) -> Change[str]:
+
+        all_known_checks = known_status_checks | known_checkruns  # For convenience later to treat them as a single set
+
         print_debug("[%s] Changing status checks on branch '%s' to [%s]" %
-                    (highlight(repo.name), highlight(branch.name), highlight(", ".join(list(known_checks)))))
+                    (highlight(repo.name), highlight(branch.name),
+                     highlight(", ".join(list(all_known_checks)))))
         try:
             if existing_checks:
-                branch.edit_required_status_checks(strict=True, contexts=list(known_checks))
+                branch.edit_required_status_checks(strict=True, contexts=list(all_known_checks))
             else:
                 safe_branch_edit_protection(
                     branch,
                     strict=True,
-                    contexts=list(known_checks),
+                    contexts=list(all_known_checks),
                 )
         except GithubException as e:
             print_error("Can't edit required status checks on repo %s branch %s: %s" %
@@ -434,30 +439,47 @@ def protect_pr_branch_with_tests_if_any_exist(org: Organization, repo: Repositor
         pass
     else:
         if len(rqs.contexts) > 0:
-            # The repository already has some status checks, in that case we do nothing
+            # The repository already has some status checks
             existing_checks = set(rqs.contexts)
             print_debug("Branch %s on repo %s already has status checks [%s]" %
                         (highlight(prb.name), highlight(repo.name), highlight(", ".join(existing_checks))))
 
     # the repository currently has no status checks, let's see if any came in within the last 7 days
     sevendaysago = datetime.now() - timedelta(days=7)
-    known_checks = set()  # type: Set[str]
-    for commit in repo.get_commits(prb.name, since=sevendaysago):
+    commits = repo.get_commits(prb.name, since=sevendaysago)
+    known_status_checks = set()  # type: Set[str]
+    for commit in commits:
         for status in commit.get_statuses():  # type: CommitStatus
-            known_checks.add(status.context)
+            if status.context not in known_status_checks:
+                print_debug("New status check [%s]: %s %s '%s'" %
+                            (commit.sha, status.updated_at,
+                             status.context, status.description))
+            known_status_checks.add(status.context)
 
-    if known_checks and known_checks != existing_checks:
+    known_checkruns = set()  # type: Set[str]
+    for commit in commits:
+        for checkrun in commit.get_check_runs():  # type: CheckRun
+            if checkrun.name not in known_checkruns:
+                print_debug("New check run [%s]: %s %s %s" %
+                            (commit.sha, checkrun.completed_at, checkrun.name, checkrun.app))
+            known_checkruns.add(checkrun.name)
+
+    all_known_checks = known_status_checks | known_checkruns  # For convenience later to treat them as a single set
+    print_debug("Found status checks [%s]" % ", ".join(all_known_checks))
+
+    if all_known_checks and all_known_checks != existing_checks:
         # add all known checks as required checks
         print_debug('Adding checks [%s] to branch %s on repo %s' %
-                    (highlight(", ".join(known_checks)), highlight(prb.name), highlight(repo.name)))
+                    (highlight(", ".join((all_known_checks) - existing_checks)),
+                     highlight(prb.name), highlight(repo.name)))
         return [Change(
             meta=ChangeMetadata(
                 executor=execute_test_protection,
-                params=[prb, existing_checks, known_checks]
+                params=[prb, existing_checks, known_status_checks, known_checkruns]
             ),
             action=ChangeActions.REPLACE if existing_checks else ChangeActions.ADD,
             before="%s checks" % len(existing_checks) if existing_checks else "No checks",
-            after="%s checks" % len(known_checks),
+            after="%s checks" % len(all_known_checks),
         )]
     return []
 
