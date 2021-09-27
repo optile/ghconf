@@ -448,6 +448,7 @@ def protect_pr_branch_with_tests_if_any_exist(org: Organization, repo: Repositor
     sevendaysago = datetime.now() - timedelta(days=7)
     commits = repo.get_commits(prb.name, since=sevendaysago)
     known_status_checks = set()  # type: Set[str]
+    known_checkruns = set()  # type: Set[str]
     for commit in commits:
         for status in commit.get_statuses():  # type: CommitStatus
             if status.context not in known_status_checks:
@@ -455,9 +456,6 @@ def protect_pr_branch_with_tests_if_any_exist(org: Organization, repo: Repositor
                             (commit.sha, status.updated_at,
                              status.context, status.description))
             known_status_checks.add(status.context)
-
-    known_checkruns = set()  # type: Set[str]
-    for commit in commits:
         for checkrun in commit.get_check_runs():  # type: CheckRun
             if checkrun.name not in known_checkruns:
                 print_debug("New check run [%s]: %s %s %s" %
@@ -504,7 +502,6 @@ def remove_all_status_checks_on_pr_branch(org: Organization, repo: Repository,
     if not prb:
         return []
 
-    existing_checks = set()  # type: Set[str]
     try:
         rqs = prb.get_required_status_checks()
     except GithubException:
@@ -512,7 +509,7 @@ def remove_all_status_checks_on_pr_branch(org: Organization, repo: Repository,
         pass
     else:
         if len(rqs.contexts) > 0:
-            existing_checks = set(rqs.contexts)
+            existing_checks = set(rqs.contexts)  # type: Set[str]
             return [Change(
                 meta=ChangeMetadata(
                     executor=execute_remove_all_status_checks,
