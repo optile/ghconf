@@ -307,12 +307,6 @@ def main() -> None:
 
         apply_changedict(changedict)
 
-    print_debug("\n=== Retry Callstack ===")
-    for k, v in ghcgithub.StackDepthWatcher.maxdepth.items():
-        print_debug("    max(%s) = %.5s" % (k, v))
-    for k, v in ghcgithub.StackDepthWatcher.tozero.items():
-        print_debug("    to0(%s) = %.5s" % (k, v))
-
 
 def app() -> None:
     try:

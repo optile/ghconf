@@ -82,31 +82,14 @@ class StackDepthWatcher:
     def __enter__(self) -> int:
         cur = self.store.depth
         self.store.depth += 1
-
-        # grab some stats on how deep the nested stack of aspects gets
-        if threading.get_ident() in StackDepthWatcher.maxdepth:
-            if self.store.depth > StackDepthWatcher.maxdepth[threading.get_ident()]:
-                StackDepthWatcher.maxdepth[threading.get_ident()] = self.store.depth
-        else:
-            StackDepthWatcher.maxdepth[threading.get_ident()] = self.store.depth
         return cur
 
     def __exit__(self, exc_type: Type[BaseException], exc_val: Optional[BaseException],
                  exc_tb: TracebackType) -> bool:
-        cur = self.store.depth
         self.store.depth -= 1
-
-        # grab some stats to understand how often we reach the bottom of the stack
-        if self.store.depth == 0 and cur > self.store.depth:
-            if threading.get_ident() in StackDepthWatcher.tozero:
-                StackDepthWatcher.tozero[threading.get_ident()] += 1
-            else:
-                StackDepthWatcher.tozero[threading.get_ident()] = 1
         return False
 
 
-StackDepthWatcher.maxdepth = {}
-StackDepthWatcher.tozero = {}
 stackdepth = StackDepthWatcher()
 
 
