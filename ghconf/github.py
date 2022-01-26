@@ -1,17 +1,20 @@
 # -* encoding: utf-8 *-
 import socket
+import threading
 import time
 import re
 from datetime import datetime, timezone
-from typing import Callable, Any,  cast, Dict
+from types import TracebackType
+from typing import Callable, Any, cast, Dict, TypeVar, Type
+from typing import Optional
 
 import github
+import github.Requester
+import github.PaginatedList
+import github.GithubObject
 import urllib3
 
 from github.GithubException import GithubException
-from github.GithubObject import GithubObject
-from github.PaginatedList import PaginatedList
-from github import Github
 from requests import ConnectionError as RequestsConnectionError  # don't shadow builtin ConnectionError
 from wrapt import synchronized
 
@@ -19,7 +22,7 @@ from ghconf.utils import print_debug, print_info, print_error, ErrorMessage, tty
 import aspectlib
 
 
-gh = cast(Github, None)  # type: Github
+gh = cast(github.Github, None)  # type: github.Github
 
 
 def default_waitticker(second: int, wait: int) -> None:
@@ -71,35 +74,66 @@ def handle_rate_limits(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) 
     yield aspectlib.Proceed
 
 
+class StackDepthWatcher:
+    def __init__(self) -> None:
+        self.store = threading.local()
+        self.store.depth = 0
+
+    def __enter__(self) -> int:
+        cur = self.store.depth
+        self.store.depth += 1
+        return cur
+
+    def __exit__(self, exc_type: Type[BaseException], exc_val: Optional[BaseException],
+                 exc_tb: TracebackType) -> bool:
+        self.store.depth -= 1
+        return False
+
+
+stackdepth = StackDepthWatcher()
+
+
 @aspectlib.Aspect(bind=True)
 def retry_on_server_failure(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     # yes, I know about aspectlib.contrib.retry(), but this one logs
-    e = None  # type: GithubException
-    for i in range(4):
-        if i < 3:
-            try:
-                yield aspectlib.Proceed
-                if i > 0:
-                    print_info("Retry successful. Moving on...")
-                break
-            except GithubException as e:
-                if e.status >= 500:
-                    print_info("Received a server error %s from GitHub. Retry %s/3" % (str(e.status), str(i + 1)))
-                    time.sleep(1)
+    exc = None  # type: Optional[Exception]
+
+    with stackdepth as depth:
+        if depth == 0:
+            for i in range(3):
+                try:
+                    yield aspectlib.Proceed
+                    if i > 0:
+                        print_debug("Retry %s successful" % (i + 1))
+                    break
+                except GithubException as e:
+                    if e.status >= 500:
+                        print_debug("Received a server error %s from GitHub. Retry %s/3\nData: %s" %
+                                    (str(e.status), str(i + 1), e.args))
+                        time.sleep(1)
+                        exc = e
+                        continue
+                    elif e.status == 404:
+                        raise
+                    else:
+                        print_error("Received server error %s from GitHub. Won't retry." % str(e.status))
+                        raise
+                except socket.timeout as e:
+                    print_error("Received socket timeout (%s). Retry %s/3" % (str(e), str(i + 1)))
+                    exc = e
                     continue
-                elif e.status == 404:
-                    raise
+                except (ConnectionError, RequestsConnectionError, urllib3.exceptions.HTTPError) as e:
+                    print_error("Received connection error (%s). Retry %s/3" % (str(e), str(i + 1)))
+                    exc = e
+                    continue
+            else:
+                if isinstance(exc, GithubException):
+                    print_error("3 retries didn't yield results.")
+                    raise exc
                 else:
-                    print_error("Received server error %s from GitHub. Won't retry." % str(e.status))
-                    raise
-            except socket.timeout as e:
-                print_error("Received socket timeout (%s). Retry %s/3" % (str(e), str(i + 1)))
-                continue
-            except (ConnectionError, RequestsConnectionError, urllib3.exceptions.HTTPError) as e:
-                print_error("Received connection error (%s). Retry %s/3" % (str(e), str(i + 1)))
-                continue
+                    raise ErrorMessage("3 retries didn't yield results.")
         else:
-            raise ErrorMessage("3 retries didn't yield results. Exiting.")
+            yield aspectlib.Proceed
 
 
 class DryRunException(Exception):
@@ -117,7 +151,7 @@ def enforce_dryrun(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) -> A
 
 def weave_magic(dry_run: bool = False) -> None:
     aspectlib.weave([github.GithubObject.GithubObject, github.PaginatedList.PaginatedList],
-                    [handle_rate_limits, retry_on_server_failure],
+                    [retry_on_server_failure, handle_rate_limits],
                     methods=re.compile(r'(?!__getattribute__$|rate_limiting$|get_rate_limit$|'
                                        r'rate_limiting_resettime$|(_|_.*?_)make[a-zA-Z]+Attribute$|'
                                        r'_useAttributes$|_initAttributes$|__init__$)'))
@@ -127,7 +161,7 @@ def weave_magic(dry_run: bool = False) -> None:
 
 
 @synchronized
-def get_github(github_token: str = "", dry_run: bool = False, *args: Any, **kwargs: Any) -> Github:
+def get_github(github_token: str = "", dry_run: bool = False, *args: Any, **kwargs: Any) -> github.Github:
     global gh
 
     weave_magic(dry_run)
@@ -136,6 +170,6 @@ def get_github(github_token: str = "", dry_run: bool = False, *args: Any, **kwar
         if not github_token:
             raise TypeError("Can't initialize Github instance without github_token")
         print_debug("Initializing Github instance")
-        gh = Github(github_token, *args, **kwargs)
+        gh = github.Github(github_token, *args, **kwargs)
 
     return gh
