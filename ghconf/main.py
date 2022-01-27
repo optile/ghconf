@@ -7,6 +7,7 @@ import shutil
 
 import sys
 import threading
+import time
 from concurrent.futures import Future
 from concurrent.futures import ThreadPoolExecutor
 from re import error
@@ -110,15 +111,16 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
         for ix, repo in enumerate(repolist):
 
             def _thread_executor() -> List[ChangeSet]:
+                _thl_org = ghcgithub.get_org(org.login, github_token)
+                _thl_repo = _thl_org.get_repo(repo.name)
+                branches = list(_thl_repo.get_branches())
+
                 if utils.enable_progressbar:
                     pbar.update()
 
                     if utils.enable_verbose_output:
-                        print_info(repofmt.format(ix=ix, repo=repo.full_name))
+                        print_info(repofmt.format(ix=ix, repo=_thl_repo.full_name))
 
-                _thl_org = ghcgithub.get_org(org.name, github_token)
-                _thl_repo = _thl_org.get_repo(repo.name)
-                branches = list(_thl_repo.get_branches())
                 cslist = []  # type: List[ChangeSet]
                 for modulename, moduledef in modules.items():
                     if not capcache.get(modulename, True):
@@ -275,7 +277,7 @@ def main() -> None:
         print_info("=" * (shutil.get_terminal_size()[0] - 15))
         ###
 
-        print_changedict(assemble_changedict(args, org))
+        print_changedict(assemble_changedict(args, org, ghtoken))
     elif args.list_unconfigured:
         print_info("=" * (shutil.get_terminal_size()[0] - 15))
         print_info("{{:^{width}}}".format(width=shutil.get_terminal_size()[0] - 15).format("Unconfigured repositories"))
@@ -317,7 +319,7 @@ def main() -> None:
         )
         print_info("=" * (shutil.get_terminal_size()[0] - 15))
         ###
-        changedict = assemble_changedict(args, org)
+        changedict = assemble_changedict(args, org, ghtoken)
         if not args.execute:
             print_changedict(changedict)
             choice = prompt("Proceed and execute? [y/N] ", choices=["y", "n"], default="n")
@@ -330,14 +332,19 @@ def main() -> None:
 
 def app() -> None:
     try:
-        mt = threading.Thread(target=main)
+        mt = threading.Thread(target=main, daemon=True)
         mt.start()
 
         wt = threading.Thread(target=utils.ttywriter, args=(mt.is_alive,), daemon=True)
         wt.start()
 
-        wt.join()
-        mt.join()
+        # why don't you just .join() the above threads? Because then on Windows
+        # CTRL+C stops working as CPython.win64 blocks in SleepConditionVariableSRW
+        # which is uninterruptible. This has been your Python internals lesson
+        # of the day. The above threads are daemon threads so they die when the
+        # while-loop exits.
+        while mt.is_alive() and wt.is_alive():
+            time.sleep(0.01)
     except utils.ErrorMessage as e:
         print_error("%s" % e.ansi_msg)
         if utils.enable_debug_output:

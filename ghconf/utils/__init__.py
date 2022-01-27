@@ -110,9 +110,10 @@ def ttywrite(msg: str = "", **kwargs: Any) -> None:
 
 def ttywriter(alivefunc: Callable[[], bool]):
     while alivefunc() or not _queue.empty():
-        item = _queue.get(True)
-        if item is StopIteration or isinstance(item, StopIteration):
+        args = _queue.get(True)
+        if args is StopIteration or isinstance(args, StopIteration):
             break
+        _ttywrite(args[0], **args[1])
 
 
 def prompt(promptstr: str, choices: Optional[List[str]] = None, default: Optional[str] = None,

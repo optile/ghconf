@@ -66,6 +66,9 @@ def check_rate_limits() -> None:
     global rate_limited
 
     # check the rate limits
+    if not hasattr(_store, 'github') or not _store.github:
+        return
+
     remaining, limit = _store.github.rate_limiting
     time_to_wait = _store.github.rate_limiting_resettime - int(datetime.now(timezone.utc).timestamp())
 
