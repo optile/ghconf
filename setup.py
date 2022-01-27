@@ -27,7 +27,7 @@ _requirements = [
     'colorama==0.4.3',
     'wrapt==1.12.1',
     'pygithub==1.51',
-    'aspectlib==1.5.1',
+    'aspectlib==1.5.2',
     'tqdm==4.49.0',
 ]
 
