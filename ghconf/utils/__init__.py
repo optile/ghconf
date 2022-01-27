@@ -1,7 +1,8 @@
 # -* encoding: utf-8 *-
+import queue
 import shutil
 from textwrap import TextWrapper
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Callable
 from typing import Type
 
 import colorama
@@ -43,7 +44,8 @@ def init_color(no_color: bool) -> None:
         colorama.init()
 
 
-_pbar = None  # type: tqdm
+_pbar = None  # type: Optional[tqdm]
+_queue = queue.Queue()
 
 
 def progressbar(total: Optional[int] = None) -> tqdm:
@@ -85,9 +87,9 @@ def resumebar() -> None:
         _pbar.refresh()
 
 
-def ttywrite(msg: str = "", **kwargs: Any) -> None:
+def _ttywrite(msg: str = "", **kwargs: Any) -> None:
     """
-    Use this instead of ``print()`` whenever possible so that your code cooperates with progressbars correctly.
+    This should only be called on the output thread.
     :param msg:
     :param kwargs:
     """
@@ -95,6 +97,22 @@ def ttywrite(msg: str = "", **kwargs: Any) -> None:
         _pbar.write(msg, **kwargs)
     else:
         print(msg, **kwargs)
+
+
+def ttywrite(msg: str = "", **kwargs: Any) -> None:
+    """
+    Use this instead of ``print()`` whenever possible so that your code cooperates with progressbars correctly.
+    :param msg:
+    :param kwargs:
+    """
+    _queue.put((msg, kwargs))
+
+
+def ttywriter(alivefunc: Callable[[], bool]):
+    while alivefunc() or not _queue.empty():
+        item = _queue.get(True)
+        if item is StopIteration or isinstance(item, StopIteration):
+            break
 
 
 def prompt(promptstr: str, choices: Optional[List[str]] = None, default: Optional[str] = None,

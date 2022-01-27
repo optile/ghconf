@@ -1,10 +1,14 @@
 #!/usr/bin/python3 -u
 # -* encoding: utf-8 *-
+import multiprocessing.pool
 import os
 import re
 import shutil
 
 import sys
+import threading
+from concurrent.futures import Future
+from concurrent.futures import ThreadPoolExecutor
 from re import error
 
 from argparse import ArgumentParser, SUPPRESS, Namespace
@@ -66,7 +70,7 @@ def assemble_repolist(args: Namespace, org: Organization) -> List[Repository]:
     return filtered_repolist
 
 
-def assemble_changedict(args: Namespace, org: Organization) -> Dict[str, ChangeSet]:
+def assemble_changedict(args: Namespace, org: Organization, github_token: str) -> Dict[str, ChangeSet]:
     changedict = {}
     if args.skip_org_changes:
         print_warning("Skipping org changes (as per --no-org-changes)")
@@ -74,19 +78,20 @@ def assemble_changedict(args: Namespace, org: Organization) -> Dict[str, ChangeS
         pbar = None
         if utils.enable_progressbar:
             pbar = progressbar(len(modules))
-        for modulename, moduledef in modules.items():  # type: str, GHConfModuleDef
-            if utils.enable_progressbar and pbar:
-                pbar.update()
-            try:
-                print_info("Building org changeset for %s" % modulename)
-                cslist = moduledef.build_organization_changesets(org)
-                for cs in cslist:
-                    changedict.update(cs.todict())
-            except NotImplementedError:
-                print_debug("%s does not support creating an organization changeset. It might not modify the "
-                            "org at all or it might just not report it." % utils.highlight(modulename))
-        if pbar:
-            pbar.close()
+
+            for modulename, moduledef in modules.items():  # type: str, GHConfModuleDef
+                if utils.enable_progressbar and pbar:
+                    pbar.update()
+                try:
+                    print_info("Building org changeset for %s" % modulename)
+                    cslist = moduledef.build_organization_changesets(org)
+                    for cs in cslist:
+                        changedict.update(cs.todict())
+                except NotImplementedError:
+                    print_debug("%s does not support creating an organization changeset. It might not modify the "
+                                "org at all or it might just not report it." % utils.highlight(modulename))
+            if pbar:
+                pbar.close()
 
     capcache = {}  # type: Dict[str, bool]
     repolist = assemble_repolist(args, org)
@@ -99,30 +104,45 @@ def assemble_changedict(args: Namespace, org: Organization) -> Dict[str, ChangeS
     repofmt = "{{ix:>{len}}}/{count} Processing repo {{repo}}".format(len=len(str(repocount)), count=str(repocount))
     if utils.enable_progressbar:
         pbar = progressbar(repocount)
-    for ix, repo in enumerate(repolist):
-        if utils.enable_progressbar:
-            pbar.update()
 
-        if utils.enable_verbose_output:
-            print_info(repofmt.format(ix=ix, repo=repo.full_name))
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        cslist_futures = []  # type: List[Future]
+        for ix, repo in enumerate(repolist):
 
-        branches = list(repo.get_branches())
-        for modulename, moduledef in modules.items():
-            if not capcache.get(modulename, True):
-                print_debug("Capability cache for module %s indicates no support for repos" % modulename)
-                continue
+            def _thread_executor() -> List[ChangeSet]:
+                if utils.enable_progressbar:
+                    pbar.update()
 
-            try:
-                print_debug("Building repo changeset for %s => %s" % (modulename, repo.name))
-                cslist = moduledef.build_repository_changesets(org, repo, branches)
-                for cs in cslist:
-                    changedict.update(cs.todict())
-            except NotImplementedError:
-                print_debug("%s does not support creating a repo changeset for repo %s. It might just not "
-                            "make any modifications at all or it might not report them." %
-                            (utils.highlight(modulename), utils.highlight(repo.name)))
-                capcache[modulename] = False
-                continue
+                    if utils.enable_verbose_output:
+                        print_info(repofmt.format(ix=ix, repo=repo.full_name))
+
+                _thl_org = ghcgithub.get_org(org.name, github_token)
+                _thl_repo = _thl_org.get_repo(repo.name)
+                branches = list(_thl_repo.get_branches())
+                cslist = []  # type: List[ChangeSet]
+                for modulename, moduledef in modules.items():
+                    if not capcache.get(modulename, True):
+                        print_debug("Capability cache for module %s indicates no support for repos" % modulename)
+                        continue
+
+                    try:
+                        print_debug("Building repo changeset for %s => %s" % (modulename, repo.name))
+                        _csl = moduledef.build_repository_changesets(_thl_org, _thl_repo, branches)
+                        cslist += _csl
+                    except NotImplementedError:
+                        print_debug("%s does not support creating a repo changeset for repo %s. It might just not "
+                                    "make any modifications at all or it might not report them." %
+                                    (utils.highlight(modulename), utils.highlight(repo.name)))
+                        capcache[modulename] = False
+                        continue
+                return cslist
+
+            cslist_futures.append(executor.submit(_thread_executor))
+
+        for csf in cslist_futures:
+            _csl = csf.result()
+            for cs in _csl:
+                changedict.update(cs.todict())
 
     pbar.close()
     return changedict
@@ -229,9 +249,9 @@ def main() -> None:
     utils.enable_progressbar = not args.no_progressbar
 
     if args.github_token:
-        gh = ghcgithub.get_github(args.github_token, dry_run=args.plan)
+        ghtoken = args.github_token
     elif os.getenv("GITHUB_TOKEN"):
-        gh = ghcgithub.get_github(os.getenv("GITHUB_TOKEN"), dry_run=args.plan)
+        ghtoken = os.getenv("GITHUB_TOKEN")
     else:
         raise utils.ErrorMessage("'--github-token' or environment variable GITHUB_TOKEN must be set")
 
@@ -244,7 +264,7 @@ def main() -> None:
 
     try:
         print_debug("Initialize GitHub API, load organization")
-        org = gh.get_organization(args.org)  # type: Organization
+        org = ghcgithub.get_org(args.org, ghtoken, args.plan)
     except GithubException:
         raise utils.ErrorMessage("No such GitHub organization %s for the given API token" % args.org)
 
@@ -310,7 +330,14 @@ def main() -> None:
 
 def app() -> None:
     try:
-        main()
+        mt = threading.Thread(target=main)
+        mt.start()
+
+        wt = threading.Thread(target=utils.ttywriter, args=(mt.is_alive,), daemon=True)
+        wt.start()
+
+        wt.join()
+        mt.join()
     except utils.ErrorMessage as e:
         print_error("%s" % e.ansi_msg)
         if utils.enable_debug_output:

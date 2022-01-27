@@ -1,5 +1,6 @@
 # -* encoding: utf-8 *-
 import socket
+import threading
 import time
 import re
 from datetime import datetime, timezone
@@ -10,6 +11,7 @@ import urllib3
 
 from github.GithubException import GithubException
 from github.GithubObject import GithubObject
+from github.Organization import Organization
 from github.PaginatedList import PaginatedList
 from github import Github
 from requests import ConnectionError as RequestsConnectionError  # don't shadow builtin ConnectionError
@@ -19,7 +21,7 @@ from ghconf.utils import print_debug, print_info, print_error, ErrorMessage, tty
 import aspectlib
 
 
-gh = cast(Github, None)  # type: Github
+_store = threading.local()
 
 
 def default_waitticker(second: int, wait: int) -> None:
@@ -53,8 +55,8 @@ def waittick(second: int, wait: int) -> None:
 
 def check_rate_limits() -> None:
     # check the rate limits
-    remaining, limit = gh.rate_limiting
-    time_to_wait = gh.rate_limiting_resettime - int(datetime.now(timezone.utc).timestamp())
+    remaining, limit = _store.github.rate_limiting
+    time_to_wait = _store.github.rate_limiting_resettime - int(datetime.now(timezone.utc).timestamp())
 
     # only a few calls left, so let's sleep for a bit
     if remaining < 20 and time_to_wait > 0:
@@ -128,14 +130,33 @@ def weave_magic(dry_run: bool = False) -> None:
 
 @synchronized
 def get_github(github_token: str = "", dry_run: bool = False, *args: Any, **kwargs: Any) -> Github:
-    global gh
+    global _store
 
     weave_magic(dry_run)
 
-    if not gh:
-        if not github_token:
-            raise TypeError("Can't initialize Github instance without github_token")
-        print_debug("Initializing Github instance")
-        gh = Github(github_token, *args, **kwargs)
+    if hasattr(_store, 'github') and _store.github:
+        return _store.github
 
-    return gh
+    if not github_token:
+        raise TypeError("Can't initialize Github instance without github_token")
+    print_debug("Initializing Github instance (thread id=%s)" % threading.get_ident())
+    _store.github = Github(github_token, *args, **kwargs)
+
+    return _store.github
+
+
+@synchronized
+def get_org(org: str, github_token: str = "", dry_run: bool = False) -> Organization:
+    global _store
+    if hasattr(_store, 'org') and _store.org:
+        return _store.org
+
+    gh = get_github(github_token, dry_run=dry_run)
+    try:
+        print_debug("Initialize GitHub API, load organization")
+        _store.org = gh.get_organization(org)
+    except GithubException:
+        raise ErrorMessage("No such GitHub organization %s for the given API token" % org)
+    return _store.org
+
+
