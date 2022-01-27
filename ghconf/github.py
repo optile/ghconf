@@ -53,17 +53,30 @@ def waittick(second: int, wait: int) -> None:
 # ----
 
 
+rate_limited = False
+wake_condition = threading.Condition()
+
+
 def check_rate_limits() -> None:
+    global rate_limited
+
     # check the rate limits
     remaining, limit = _store.github.rate_limiting
     time_to_wait = _store.github.rate_limiting_resettime - int(datetime.now(timezone.utc).timestamp())
 
     # only a few calls left, so let's sleep for a bit
-    if remaining < 20 and time_to_wait > 0:
-        print_info("rate limited. sleeping for %s seconds" % time_to_wait)
-        for i in range(0, time_to_wait):
-            time.sleep(1)
-            waittick(i + 1, time_to_wait)
+    if rate_limited or (remaining < 50 and time_to_wait > 0):
+        with wake_condition:
+            if rate_limited:
+                while rate_limited:
+                    wake_condition.wait()
+            else:
+                # we're the first thread to detect the impending rate limiting
+                print_info("rate limited. sleeping for %s seconds" % time_to_wait)
+                for i in range(0, time_to_wait):
+                    time.sleep(1)
+                    waittick(i + 1, time_to_wait)
+                wake_condition.notify_all()
 
 
 @aspectlib.Aspect(bind=True)
