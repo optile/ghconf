@@ -93,21 +93,20 @@ def handle_rate_limits(cutpoint: Callable[..., Any], *args: Any, **kwargs: Any) 
 
 class StackDepthWatcher:
     def __init__(self) -> None:
-        self.store = threading.local()
-        self.store.depth = 0
+        self.depth = 0
 
     def __enter__(self) -> int:
-        cur = self.store.depth
-        self.store.depth += 1
+        cur = self.depth
+        self.depth += 1
         return cur
 
     def __exit__(self, exc_type: Type[BaseException], exc_val: Optional[BaseException],
                  exc_tb: TracebackType) -> bool:
-        self.store.depth -= 1
+        self.depth -= 1
         return False
 
 
-stackdepth = StackDepthWatcher()
+stackdepth = threading.local()
 
 
 @aspectlib.Aspect(bind=True)
@@ -115,7 +114,10 @@ def retry_on_server_failure(cutpoint: Callable[..., Any], *args: Any, **kwargs: 
     # yes, I know about aspectlib.contrib.retry(), but this one logs
     exc = None  # type: Optional[Exception]
 
-    with stackdepth as depth:
+    if not hasattr(stackdepth, "watcher") or not stackdepth.watcher:
+        stackdepth.watcher = StackDepthWatcher()
+
+    with stackdepth.watcher as depth:
         if depth == 0:
             for i in range(3):
                 try:
