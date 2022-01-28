@@ -120,8 +120,8 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
                 if utils.enable_progressbar:
                     pbar.update()
 
-                    if utils.enable_verbose_output:
-                        print_info(repofmt.format(ix=_ix + 1, repo=_thl_repo.full_name))
+                if utils.enable_verbose_output:
+                    print_info(repofmt.format(ix=_ix + 1, repo=_thl_repo.full_name))
 
                 cslist = []  # type: List[ChangeSet]
                 for modulename, moduledef in modules.items():
