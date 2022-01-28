@@ -25,6 +25,7 @@ from wrapt import synchronized
 from ghconf.utils import print_debug, print_info, print_error, ErrorMessage, ttywrite, highlight, resumebar, suspendbar
 import aspectlib
 
+from ghconf.utils.threading import KillSwitchReceived
 
 _store = threading.local()
 
@@ -57,34 +58,48 @@ def waittick(second: int, wait: int) -> None:
 # manage rate-limiting across all GitHub APIs.
 # ----
 
-
-rate_limited = False
-wake_condition = threading.Condition()
+killswitch = threading.Event()
+oktogo = threading.Event()
+oktogo.set()
+ratelimit_high = -1
+ratelimit_low = 999999999
+ratelimit_limit = 999999999
 
 
 def check_rate_limits() -> None:
-    global rate_limited
+    global rate_limited, ratelimit_high, ratelimit_low, ratelimit_limit
 
     # check the rate limits
     if not hasattr(_store, 'github') or not _store.github:
         return
 
-    remaining, limit = _store.github.rate_limiting
+    remaining, ratelimit_limit = _store.github.rate_limiting
     time_to_wait = _store.github.rate_limiting_resettime - int(datetime.now(timezone.utc).timestamp())
 
     # only a few calls left, so let's sleep for a bit
-    if rate_limited or (remaining < 50 and time_to_wait > 0):
-        with wake_condition:
-            if rate_limited:
-                while rate_limited:
-                    wake_condition.wait()
-            else:
-                # we're the first thread to detect the impending rate limiting
-                print_info("rate limited. sleeping for %s seconds" % time_to_wait)
-                for i in range(0, time_to_wait):
-                    time.sleep(1)
-                    waittick(i + 1, time_to_wait)
-                wake_condition.notify_all()
+    if remaining < 50 and time_to_wait > 0 and oktogo.is_set():
+        # we're the first thread to detect the impending rate limiting
+        # and we hold the wake_condition lock right now, so we should be the
+        # only ones here
+        oktogo.clear()
+        print_info("rate limited. sleeping for %s seconds" % time_to_wait)
+        for i in range(0, time_to_wait):
+            time.sleep(1)
+            waittick(i + 1, time_to_wait)
+            if killswitch.is_set():
+                raise KillSwitchReceived()
+        oktogo.set()
+
+    if oktogo.is_set():
+        if remaining > ratelimit_high:
+            ratelimit_high = remaining
+        if remaining < ratelimit_low:
+            ratelimit_low = remaining
+    else:
+        while not oktogo.is_set():
+            if killswitch.is_set():
+                raise KillSwitchReceived()
+            oktogo.wait(timeout=0.2)
 
 
 @aspectlib.Aspect(bind=True)
@@ -207,7 +222,7 @@ def get_org(org: str, github_token: str = "", dry_run: bool = False) -> Organiza
 
     gh = get_github(github_token, dry_run=dry_run)
     try:
-        print_debug("Initialize GitHub API, load organization")
+        print_debug("Initialize GitHub API, load organization (thread id=%s)" % threading.get_ident())
         _store.org = gh.get_organization(org)
     except GithubException:
         raise ErrorMessage("No such GitHub organization %s for the given API token" % org)

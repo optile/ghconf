@@ -5,7 +5,7 @@ import shutil
 import threading
 from dataclasses import dataclass, field
 from textwrap import TextWrapper
-from typing import List, Any, Optional, Callable, Tuple, Dict
+from typing import List, Any, Optional, Callable, Tuple, Dict, Union
 from typing import Type
 
 import colorama
@@ -46,11 +46,6 @@ def init_color(no_color: bool) -> None:
         colorama.init()
 
 
-_pbar = None  # type: Optional[tqdm]
-_queue = queue.Queue()
-_prompt_response = queue.Queue(maxsize=1)
-
-
 @dataclass
 class TtyMessage:
     msg: str
@@ -63,6 +58,11 @@ class PromptMessage:
     choices: List[str] = field(default_factory=list)
     default: Optional[str] = None
     ignore_case: bool = True
+
+
+_pbar = None  # type: Optional[tqdm]
+_queue = queue.Queue[TtyMessage, PromptMessage, StopIteration]()
+_prompt_response = queue.Queue[str, StopIteration](maxsize=1)
 
 
 def progressbar(total: Optional[int] = None) -> tqdm:
@@ -95,13 +95,15 @@ def progressbar(total: Optional[int] = None) -> tqdm:
 def suspendbar() -> None:
     if _pbar:
         print_debug("Suspending progress bar...")
-        _pbar.clear()
+        _pbar.clear(nolock=True)
+        _pbar.disable = True
 
 
 def resumebar() -> None:
     if _pbar:
         print_debug("Resuming progress bar...")
-        _pbar.refresh()
+        _pbar.disable = False
+        _pbar.refresh(nolock=True)
 
 
 def _ttywrite(msg: str = "", **kwargs: Any) -> None:
@@ -129,7 +131,12 @@ def ttywrite(msg: str = "", **kwargs: Any) -> None:
 
 def ttywriter(alivefunc: Callable[[], bool]) -> None:
     while alivefunc() or not _queue.empty():
-        item = _queue.get(True)
+        item = None  # type: Union[TtyMessage, PromptMessage, StopIteration]
+        try:
+            item = _queue.get(True, timeout=0.01)
+        except queue.Empty:
+            pass
+
         if isinstance(item, TtyMessage):
             _ttywrite(item.msg, **item.kwargs)
         elif item is StopIteration or isinstance(item, StopIteration):
@@ -137,6 +144,10 @@ def ttywriter(alivefunc: Callable[[], bool]) -> None:
         elif isinstance(item, PromptMessage):
             resp = _prompt(item.msg, item.choices, item.default, item.ignore_case)
             _prompt_response.put(resp)
+
+
+def close_ttywriter() -> None:
+    _queue.put(StopIteration)
 
 
 def _prompt(promptstr: str, choices: Optional[List[str]] = None, default: Optional[str] = None,

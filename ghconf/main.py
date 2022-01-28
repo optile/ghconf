@@ -14,6 +14,7 @@ from re import error
 
 from argparse import ArgumentParser, SUPPRESS, Namespace
 from typing import Dict, List
+from typing import Optional
 
 from ghconf import utils, github as ghcgithub
 from ghconf.base import GHConfModuleDef, ChangeSet
@@ -24,6 +25,7 @@ from github.Organization import Organization
 from github.Repository import Repository
 
 from ghconf.utils import print_debug, progressbar, print_info, print_warning, print_error, print_wrapped, prompt
+from ghconf.utils.threading import ThreadEx, KillSwitchReceived
 
 modules = {}  # type: Dict[str, GHConfModuleDef]
 
@@ -145,6 +147,8 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
 
         for csf in cslist_futures:
             _csl = csf.result()
+            if ghcgithub.killswitch.is_set():
+                raise KillSwitchReceived()
             for cs in _csl:
                 changedict.update(cs.todict())
 
@@ -334,11 +338,13 @@ def main() -> None:
 
 
 def app() -> None:
+    wt = None  # type: Optional[ThreadEx]
+    mt = None  # type: Optional[ThreadEx]
     try:
-        mt = threading.Thread(target=main, daemon=True)
+        mt = ThreadEx(target=main, daemon=True)
         mt.start()
 
-        wt = threading.Thread(target=utils.ttywriter, args=(mt.is_alive,), daemon=True)
+        wt = ThreadEx(target=utils.ttywriter, args=(mt.is_alive,), daemon=True)
         wt.start()
 
         # why don't you just .join() the above threads? Because then on Windows
@@ -348,13 +354,35 @@ def app() -> None:
         # while-loop exits.
         while mt.is_alive() and wt.is_alive():
             time.sleep(0.01)
+
+        # finish all output
+        if mt.has_exception():
+            mt.join()
+        wt.join()
+
+        if utils.enable_debug_output:
+            print()
+            print("========= API Operations =========")
+            print("Available at start: %-9s" % ghcgithub.ratelimit_high)
+            print("Remaining at end:  %-9s" % ghcgithub.ratelimit_low)
+            print("Account limit: %-9s" % ghcgithub.ratelimit_limit)
     except utils.ErrorMessage as e:
         print_error("%s" % e.ansi_msg)
+        utils.close_ttywriter()
+        wt.join()
+
         if utils.enable_debug_output:
             print(utils.highlight("********** VERBOSE OUTPUT Full Exception Follows **********"))
             raise
         else:
             sys.exit(e.exitcode)
+    except KeyboardInterrupt:
+        ghcgithub.killswitch.set()
+        utils.close_ttywriter()
+        mt.join()
+        wt.join()
+        print("\n\nCtrl+C break received. Exiting.")
+        return
 
 
 if __name__ == "__main__":
