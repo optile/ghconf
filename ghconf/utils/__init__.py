@@ -3,8 +3,9 @@ import time
 import queue
 import shutil
 import threading
+from dataclasses import dataclass, field
 from textwrap import TextWrapper
-from typing import List, Any, Optional, Callable
+from typing import List, Any, Optional, Callable, Tuple, Dict
 from typing import Type
 
 import colorama
@@ -14,7 +15,7 @@ from colorama import Fore, Style
 from ghconf.utils.ansi import ANSITextWrapper, strip_ANSI
 
 enable_debug_output = False  # type: bool
-enable_verbose_output = False # type: bool
+enable_verbose_output = False  # type: bool
 enable_color = True  # type: bool
 enable_progressbar = True  # type: bool
 
@@ -29,7 +30,6 @@ error_hl = Fore.LIGHTRED_EX  # type: str
 error_color = Fore.RED  # type: str
 highlight_color = Fore.LIGHTWHITE_EX  # type: str
 color_reset = Style.RESET_ALL  # type: str
-
 
 _TextWrapper = ANSITextWrapper  # type: Type[TextWrapper]
 
@@ -48,6 +48,21 @@ def init_color(no_color: bool) -> None:
 
 _pbar = None  # type: Optional[tqdm]
 _queue = queue.Queue()
+_prompt_response = queue.Queue(maxsize=1)
+
+
+@dataclass
+class TtyMessage:
+    msg: str
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class PromptMessage:
+    msg: str
+    choices: List[str] = field(default_factory=list)
+    default: Optional[str] = None
+    ignore_case: bool = True
 
 
 def progressbar(total: Optional[int] = None) -> tqdm:
@@ -107,49 +122,50 @@ def ttywrite(msg: str = "", **kwargs: Any) -> None:
     :param msg:
     :param kwargs:
     """
-    _queue.put((msg, kwargs))
-
-
-prompt_condition = threading.Condition()
-prompting = False
+    _queue.put(TtyMessage(
+        msg, kwargs
+    ))
 
 
 def ttywriter(alivefunc: Callable[[], bool]) -> None:
     while alivefunc() or not _queue.empty():
-        args = _queue.get(True)
-        if prompting:
-            with prompt_condition:
-                prompt_condition.wait()
-        if args is StopIteration or isinstance(args, StopIteration):
+        item = _queue.get(True)
+        if isinstance(item, TtyMessage):
+            _ttywrite(item.msg, **item.kwargs)
+        elif item is StopIteration or isinstance(item, StopIteration):
             break
-        _ttywrite(args[0], **args[1])
+        elif isinstance(item, PromptMessage):
+            resp = _prompt(item.msg, item.choices, item.default, item.ignore_case)
+            _prompt_response.put(resp)
 
 
-def prompt(promptstr: str, choices: Optional[List[str]] = None, default: Optional[str] = None,
-           case_sensitive: bool = False) -> str:
-    global prompting
+def _prompt(promptstr: str, choices: Optional[List[str]] = None, default: Optional[str] = None,
+            ignore_case: bool = True) -> str:
     suspendbar()
-    with prompt_condition:
-        _queue.join()
-        prompting = True
-        while True:
-            try:
-                resp = input(promptstr)
-            except EOFError as e:
-                raise ErrorMessage("Input cancelled. Break. (%s)" % str(e))
+    while True:
+        try:
+            resp = input(promptstr)
+        except EOFError as e:
+            raise ErrorMessage("Input cancelled. Break. (%s)" % str(e))
 
-            if not case_sensitive:
-                resp = resp.lower()
-            if (choices and resp in choices) or choices is None:
-                break
-            elif resp == "" and default:
-                resp = default
-                break
-        prompting = False
-        prompt_condition.notify_all()
+        if ignore_case:
+            resp = resp.lower()
+        if (choices and resp in choices) or choices is None:
+            break
+        elif resp == "" and default:
+            resp = default
+            break
 
     resumebar()
     return resp
+
+
+def prompt(promptstr: str, choices: Optional[List[str]] = None, default: Optional[str] = None,
+           ignore_case: bool = True) -> str:
+    _queue.put(PromptMessage(
+        promptstr, choices, default, ignore_case
+    ))
+    return _prompt_response.get(True)
 
 
 def print_wrapped(msg: str, msgtype: str = "", **kwargs: Any) -> None:
@@ -200,7 +216,7 @@ def highlight(message: str) -> str:
 
 
 class ErrorMessage(Exception):
-    def __init__(self, ansi_msg: str, exitcode: int=1) -> None:
+    def __init__(self, ansi_msg: str, exitcode: int = 1) -> None:
         super().__init__(ansi_msg)
         self.ansi_msg = ansi_msg
         self.exitcode = exitcode
