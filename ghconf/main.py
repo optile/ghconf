@@ -110,9 +110,9 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
         cslist_futures = []  # type: List[Future]
         for ix, repo in enumerate(repolist):
 
-            def _thread_executor() -> List[ChangeSet]:
-                _thl_org = ghcgithub.get_org(org.login, github_token)
-                _thl_repo = _thl_org.get_repo(repo.name)
+            def _thread_executor(orgname, reponame) -> List[ChangeSet]:
+                _thl_org = ghcgithub.get_org(orgname, github_token)
+                _thl_repo = _thl_org.get_repo(reponame)
                 branches = list(_thl_repo.get_branches())
 
                 if utils.enable_progressbar:
@@ -139,7 +139,9 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
                         continue
                 return cslist
 
-            cslist_futures.append(executor.submit(_thread_executor))
+            cslist_futures.append(
+                executor.submit(_thread_executor, org.login, repo.name)
+            )
 
         for csf in cslist_futures:
             _csl = csf.result()
@@ -342,7 +344,7 @@ def app() -> None:
         # why don't you just .join() the above threads? Because then on Windows
         # CTRL+C stops working as CPython.win64 blocks in SleepConditionVariableSRW
         # which is uninterruptible. This has been your Python internals lesson
-        # of the day. The above threads are daemon threads so they die when the
+        # of the day. The above threads are daemon threads, so they die when the
         # while-loop exits.
         while mt.is_alive() and wt.is_alive():
             time.sleep(0.01)
