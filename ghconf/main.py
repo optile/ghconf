@@ -82,19 +82,19 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
         if utils.enable_progressbar:
             pbar = progressbar(len(modules))
 
-            for modulename, moduledef in modules.items():  # type: str, GHConfModuleDef
-                if utils.enable_progressbar and pbar:
-                    pbar.update()
-                try:
-                    print_info("Building org changeset for %s" % modulename)
-                    cslist = moduledef.build_organization_changesets(org)
-                    for cs in cslist:
-                        changedict.update(cs.todict())
-                except NotImplementedError:
-                    print_debug("%s does not support creating an organization changeset. It might not modify the "
-                                "org at all or it might just not report it." % utils.highlight(modulename))
-            if pbar:
-                pbar.close()
+        for modulename, moduledef in modules.items():  # type: str, GHConfModuleDef
+            if utils.enable_progressbar and pbar:
+                pbar.update()
+            try:
+                print_info("Building org changeset for %s" % modulename)
+                cslist = moduledef.build_organization_changesets(org)
+                for cs in cslist:
+                    changedict.update(cs.todict())
+            except NotImplementedError:
+                print_debug("%s does not support creating an organization changeset. It might not modify the "
+                            "org at all or it might just not report it." % utils.highlight(modulename))
+        if pbar:
+            pbar.close()
 
     capcache = {}  # type: Dict[str, bool]
     repolist = assemble_repolist(args, org)
