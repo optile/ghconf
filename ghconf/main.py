@@ -352,6 +352,7 @@ def app() -> None:
 
         mt = ThreadEx(target=main, daemon=True)
         mt.start()
+
         # why don't you just .join() the above threads? Because then on Windows
         # CTRL+C stops working as CPython.win64 blocks in SleepConditionVariableSRW
         # which is uninterruptible. This has been your Python internals lesson
@@ -362,6 +363,10 @@ def app() -> None:
 
         # finish all output
         if mt.has_exception():
+            # mt is doing a lot of stuff, joining it here if it has no exception
+            # might actually end up blocking indefinitely on Windows, so we don't. When we
+            # exit, it'll be taken down. But if it has an exception then ThreadEx.join will
+            # bubble it into this thread, which we want so we handle ErrorMessage correctly.
             mt.join()
         wt.join()
 
