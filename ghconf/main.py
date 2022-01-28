@@ -377,6 +377,7 @@ def app() -> None:
             print("Remaining at end:  %-9s" % ghcgithub.ratelimit_low)
             print("Account limit: %-9s" % ghcgithub.ratelimit_limit)
     except utils.ErrorMessage as e:
+        ghcgithub.killswitch.set()
         print_error("%s" % e.ansi_msg)
         utils.close_ttywriter()
         wt.join()
