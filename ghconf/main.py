@@ -347,12 +347,11 @@ def app() -> None:
     wt = None  # type: Optional[ThreadEx]
     mt = None  # type: Optional[ThreadEx]
     try:
-        mt = ThreadEx(target=main, daemon=True)
-        mt.start()
-
         wt = ThreadEx(target=utils.ttywriter, args=(mt.is_alive,), daemon=True)
         wt.start()
 
+        mt = ThreadEx(target=main, daemon=True)
+        mt.start()
         # why don't you just .join() the above threads? Because then on Windows
         # CTRL+C stops working as CPython.win64 blocks in SleepConditionVariableSRW
         # which is uninterruptible. This has been your Python internals lesson
