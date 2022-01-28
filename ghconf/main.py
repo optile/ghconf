@@ -108,7 +108,7 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
     if utils.enable_progressbar:
         pbar = progressbar(repocount)
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=args.worker_count) as executor:
         cslist_futures = []  # type: List[Future]
         for ix, repo in enumerate(repolist):
 
@@ -242,6 +242,8 @@ def main() -> None:
     parser.add_argument("--execute", dest="execute", action="store_true", default=False,
                         help="Execute any detected changes without asking first. If this is not set, ghconf will ask "
                              "for permission before executing any changes.")
+    parser.add_argument("-w", "--workers", dest="worker_count", type=int, default=10,
+                        help="Number of worker threads used to parallelize work with GitHub's API (default: 10).")
 
     for modulename, moduledef in modules.items():  # type: str, GHConfModuleDef
         try:
@@ -250,6 +252,10 @@ def main() -> None:
         except NotImplementedError:
             pass
 
+    # parser.parse_args might just execute the HelpCommand action and start writing to stdout,
+    # so we flush the output thread. This doesn't solve the race condition, _except_ that we
+    # know that at this point in the program there is no other thread producing output.
+    utils.flush_output()
     args = parser.parse_args(sys.argv[1:])
 
     if args.verbose:

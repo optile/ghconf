@@ -131,7 +131,7 @@ def ttywrite(msg: str = "", **kwargs: Any) -> None:
 
 def ttywriter(alivefunc: Callable[[], bool]) -> None:
     while alivefunc() or not _queue.empty():
-        item = None  # type: Union[TtyMessage, PromptMessage, StopIteration]
+        item = None  # type: Union[TtyMessage, PromptMessage, StopIteration, None]
         try:
             item = _queue.get(True, timeout=0.01)
         except queue.Empty:
@@ -148,6 +148,11 @@ def ttywriter(alivefunc: Callable[[], bool]) -> None:
 
 def close_ttywriter() -> None:
     _queue.put(StopIteration)
+
+
+def flush_output() -> None:
+    while not _queue.empty():
+        time.sleep(0.01)
 
 
 def _prompt(promptstr: str, choices: Optional[List[str]] = None, default: Optional[str] = None,
