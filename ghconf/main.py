@@ -146,7 +146,8 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
             for cs in _csl:
                 changedict.update(cs.todict())
 
-    pbar.close()
+    if pbar:
+        pbar.close()
     return changedict
 
 

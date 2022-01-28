@@ -1,6 +1,8 @@
 # -* encoding: utf-8 *-
+import time
 import queue
 import shutil
+import threading
 from textwrap import TextWrapper
 from typing import List, Any, Optional, Callable
 from typing import Type
@@ -108,9 +110,16 @@ def ttywrite(msg: str = "", **kwargs: Any) -> None:
     _queue.put((msg, kwargs))
 
 
-def ttywriter(alivefunc: Callable[[], bool]):
+prompt_condition = threading.Condition()
+prompting = False
+
+
+def ttywriter(alivefunc: Callable[[], bool]) -> None:
     while alivefunc() or not _queue.empty():
         args = _queue.get(True)
+        if prompting:
+            with prompt_condition:
+                prompt_condition.wait()
         if args is StopIteration or isinstance(args, StopIteration):
             break
         _ttywrite(args[0], **args[1])
@@ -118,21 +127,27 @@ def ttywriter(alivefunc: Callable[[], bool]):
 
 def prompt(promptstr: str, choices: Optional[List[str]] = None, default: Optional[str] = None,
            case_sensitive: bool = False) -> str:
+    global prompting
     suspendbar()
+    with prompt_condition:
+        _queue.join()
+        prompting = True
+        while True:
+            try:
+                resp = input(promptstr)
+            except EOFError as e:
+                raise ErrorMessage("Input cancelled. Break. (%s)" % str(e))
 
-    while True:
-        try:
-            resp = input(promptstr)
-        except EOFError as e:
-            raise ErrorMessage("Input cancelled. Break. (%s)" % str(e))
+            if not case_sensitive:
+                resp = resp.lower()
+            if (choices and resp in choices) or choices is None:
+                break
+            elif resp == "" and default:
+                resp = default
+                break
+        prompting = False
+        prompt_condition.notify_all()
 
-        if not case_sensitive:
-            resp = resp.lower()
-        if (choices and resp in choices) or choices is None:
-            break
-        elif resp == "" and default:
-            resp = default
-            break
     resumebar()
     return resp
 
