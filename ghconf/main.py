@@ -112,7 +112,7 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
         cslist_futures = []  # type: List[Future]
         for ix, repo in enumerate(repolist):
 
-            def _thread_executor(orgname, reponame) -> List[ChangeSet]:
+            def _thread_executor(_ix: int, orgname: str, reponame: str) -> List[ChangeSet]:
                 _thl_org = ghcgithub.get_org(orgname, github_token)
                 _thl_repo = _thl_org.get_repo(reponame)
                 branches = list(_thl_repo.get_branches())
@@ -121,7 +121,7 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
                     pbar.update()
 
                     if utils.enable_verbose_output:
-                        print_info(repofmt.format(ix=ix, repo=_thl_repo.full_name))
+                        print_info(repofmt.format(ix=_ix + 1, repo=_thl_repo.full_name))
 
                 cslist = []  # type: List[ChangeSet]
                 for modulename, moduledef in modules.items():
@@ -130,19 +130,19 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
                         continue
 
                     try:
-                        print_debug("Building repo changeset for %s => %s" % (modulename, repo.name))
+                        print_debug("Building repo changeset for %s => %s" % (modulename, reponame))
                         _csl = moduledef.build_repository_changesets(_thl_org, _thl_repo, branches)
                         cslist += _csl
                     except NotImplementedError:
                         print_debug("%s does not support creating a repo changeset for repo %s. It might just not "
                                     "make any modifications at all or it might not report them." %
-                                    (utils.highlight(modulename), utils.highlight(repo.name)))
+                                    (utils.highlight(modulename), utils.highlight(reponame)))
                         capcache[modulename] = False
                         continue
                 return cslist
 
             cslist_futures.append(
-                executor.submit(_thread_executor, org.login, repo.name)
+                executor.submit(_thread_executor, ix, org.login, repo.name)
             )
 
         for csf in cslist_futures:
