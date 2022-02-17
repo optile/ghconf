@@ -1,6 +1,5 @@
 #!/usr/bin/python3 -u
 # -* encoding: utf-8 *-
-import multiprocessing.pool
 import os
 import re
 import shutil
@@ -13,18 +12,22 @@ from concurrent.futures import ThreadPoolExecutor
 from re import error
 
 from argparse import ArgumentParser, SUPPRESS, Namespace
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from typing import Optional
 
+import tqdm
+
 from ghconf import utils, github as ghcgithub
-from ghconf.base import GHConfModuleDef, ChangeSet
-from ghconf.output import print_changedict, apply_changedict
+from ghconf.base import GHConfModuleDef, ChangeSet, Change
+from ghconf.output import print_changedict, ChangedictStats, print_changeset_banner, format_changeset_banner, \
+    print_lines
 
 from github import GithubException
 from github.Organization import Organization
 from github.Repository import Repository
 
-from ghconf.utils import print_debug, progressbar, print_info, print_warning, print_error, print_wrapped, prompt
+from ghconf.utils import print_debug, progressbar, print_info, print_warning, print_error, print_wrapped, prompt, \
+    ttywrite
 from ghconf.utils.threading import ThreadEx, KillSwitchReceived
 
 modules = {}  # type: Dict[str, GHConfModuleDef]
@@ -155,6 +158,67 @@ def assemble_changedict(args: Namespace, org: Organization, github_token: str) -
     if pbar:
         pbar.close()
     return changedict
+
+
+def apply_changeset(changeset: ChangeSet, pbar: tqdm.tqdm,
+                    executor: ThreadPoolExecutor) -> Tuple[Dict[str, int], List[Future], List[str]]:
+    cols, lines = shutil.get_terminal_size()
+    fmt = "        {{change:.<{left}}}{{status:.>20}}".format(left=cols-30)
+    results_lock = threading.Lock()
+    results = {}  # type: Dict[str, int]
+
+    futures = []  # type: List[Future]
+    banner = format_changeset_banner(changeset)
+    for change in changeset.changes:
+        def _threadexecutor(change: Change) -> str:
+            change.execute()
+            if utils.enable_progressbar and pbar:
+                pbar.update()
+            with results_lock:
+                if str(change.status.status) not in results:
+                    results[str(change.status.status)] = 0
+                results[str(change.status.status)] += 1
+
+            return fmt.format(change=str(change), status=str(change.status))
+
+        futures.append(executor.submit(_threadexecutor, change))
+
+    return results, futures, banner
+
+
+def apply_changedict(args: Namespace, changedict: Dict[str, ChangeSet]) -> None:
+    s = ChangedictStats.from_changedict(changedict)
+    pbar = None
+    if utils.enable_progressbar:
+        pbar = progressbar(total=s.count())
+    results = {}  # type: Dict[str, int]
+    cs_futures = []  # type: List[Future]
+    with ThreadPoolExecutor(max_workers=args.worker_count) as executor:
+        for m, cs in changedict.items():
+            cs_futures.append(
+                executor.submit(apply_changeset, cs, pbar, executor)
+            )
+
+        for fut in cs_futures:
+            _res = fut.result()  # type: Tuple[Dict[str, int], List[Future], List[str]]
+            csres, subfuts, lines = _res
+            for sf in subfuts:
+                lines.append(sf.result())
+
+            for k, v in csres.items():
+                if k in results:
+                    results[k] += v
+                else:
+                    results[k] = v
+
+            print_lines(lines)
+
+    cols, lines = shutil.get_terminal_size()
+    ttywrite("=" * (cols - 15))
+    ttywrite("    Results")
+    ttywrite("=" * (cols - 15))
+    for k, v in results.items():
+        ttywrite("    {count:>4}    {state} changes".format(count=v, state=k))
 
 
 def main() -> None:
@@ -340,7 +404,7 @@ def main() -> None:
                 print_info("Execution cancelled")
                 return
 
-        apply_changedict(changedict)
+        apply_changedict(args, changedict)
 
 
 def app() -> None:
