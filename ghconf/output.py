@@ -1,6 +1,6 @@
 # -* encoding: utf-8 *-
 import shutil
-from typing import Dict
+from typing import Dict, List, Sequence
 
 from colorama import Fore
 
@@ -10,35 +10,52 @@ from ghconf.utils import highlight, progressbar, ttywrite
 from ghconf.utils.ansi import ANSITextWrapper
 
 
-def print_changeset_banner(changeset: ChangeSet) -> None:
-    ttywrite("%s %s\n    (%s %sadditions%s, %s %sdeletions%s, %s %sreplacements%s, %s %sinfos%s)" %
-             (highlight("Changes from module"), changeset.source, changeset.additions, Fore.GREEN,
-              Fore.RESET, changeset.deletions, Fore.RED, Fore.RESET, changeset.replacements, Fore.YELLOW, Fore.RESET,
-              changeset.infos, Fore.LIGHTBLUE_EX, Fore.RESET))
-    cols, lines = shutil.get_terminal_size()
+def print_lines(lines: Sequence[str]) -> None:
+    for line in lines:
+        ttywrite(line)
+
+
+def format_changeset_banner(changeset: ChangeSet) -> List[str]:
+    lines = [
+        "%s %s\n    (%s %sadditions%s, %s %sdeletions%s, %s %sreplacements%s, %s %sinfos%s)" %
+        (highlight("Changes from module"), changeset.source, changeset.additions, Fore.GREEN,
+        Fore.RESET, changeset.deletions, Fore.RED, Fore.RESET, changeset.replacements, Fore.YELLOW, Fore.RESET,
+        changeset.infos, Fore.LIGHTBLUE_EX, Fore.RESET)
+    ]
+
+    cols, _ = shutil.get_terminal_size()
 
     if changeset.description:
         wrapper = ANSITextWrapper(width=cols - 1, initial_indent="  ", subsequent_indent="  ", expand_tabs=True,
                                   tabsize=4)
-        ttywrite()
-        ttywrite(wrapper.fill(changeset.description))
-        ttywrite()
+        lines.append("")
+        lines.append(wrapper.fill(changeset.description))
+        lines.append("")
+
+    return lines
 
 
-def print_changeset(changeset: ChangeSet) -> None:
-    print_changeset_banner(changeset)
+def print_changeset_banner(changeset: ChangeSet) -> None:
+    print_lines(format_changeset_banner(changeset))
 
+
+def format_changeset(changeset: ChangeSet) -> List[str]:
+    lines = format_changeset_banner(changeset)
     if utils.enable_verbose_output:
         filtered = sorted(changeset.changes)
     else:
         filtered = sorted([c for c in changeset.changes if c.action != ChangeActions.INFO])
 
     for change in filtered:
-        ttywrite("        ", end="")
-        ttywrite(str(change))
+        lines.append("        %s" % str(change))
+    return lines
 
 
-class Changedict_Stats:
+def print_changeset(changeset: ChangeSet) -> None:
+    print_lines(format_changeset(changeset))
+
+
+class ChangedictStats:
     def __init__(self, adds: int = 0, infos: int = 0, deletes: int = 0, replacements: int = 0):
         self.adds = adds
         self.infos = infos
@@ -46,8 +63,8 @@ class Changedict_Stats:
         self.replacements = replacements
 
     @staticmethod
-    def from_changedict(changedict: Dict[str, ChangeSet]) -> 'Changedict_Stats':
-        ret = Changedict_Stats()
+    def from_changedict(changedict: Dict[str, ChangeSet]) -> 'ChangedictStats':
+        ret = ChangedictStats()
         for m, cs in changedict.items():
             if cs.additions > 0 or cs.deletions > 0 or cs.replacements > 0 \
                     or cs.infos > 0 or utils.enable_verbose_output:
@@ -62,7 +79,7 @@ class Changedict_Stats:
 
 
 def print_changedict(changedict: Dict[str, ChangeSet]) -> None:
-    s = Changedict_Stats.from_changedict(changedict)
+    s = ChangedictStats.from_changedict(changedict)
 
     for m, cs in changedict.items():
         if cs.additions > 0 or cs.deletions > 0 or cs.replacements > 0 or utils.enable_verbose_output:
