@@ -411,11 +411,10 @@ def app() -> None:
     wt = None  # type: Optional[ThreadEx]
     mt = None  # type: Optional[ThreadEx]
     try:
-        wt = ThreadEx(target=utils.ttywriter, args=(mt.is_alive,), daemon=True)
-        wt.start()
-
         mt = ThreadEx(target=main, daemon=True)
+        wt = ThreadEx(target=utils.ttywriter, args=(mt.is_alive,), daemon=True)
         mt.start()
+        wt.start()
 
         # why don't you just .join() the above threads? Because then on Windows
         # CTRL+C stops working as CPython.win64 blocks in SleepConditionVariableSRW
@@ -437,9 +436,9 @@ def app() -> None:
         if utils.enable_debug_output:
             print()
             print("========= API Operations =========")
-            print("Available at start: %-9s" % ghcgithub.ratelimit_high)
-            print("Remaining at end:  %-9s" % ghcgithub.ratelimit_low)
-            print("Account limit: %-9s" % ghcgithub.ratelimit_limit)
+            print(f"Available at start: {ghcgithub.ratelimit_high:>5}")
+            print(f"Remaining at end:   {ghcgithub.ratelimit_low:>5}")
+            print(f"Account limit:      {ghcgithub.ratelimit_limit:>5}")
     except utils.ErrorMessage as e:
         ghcgithub.killswitch.set()
         print_error("%s" % e.ansi_msg)
