@@ -20,6 +20,12 @@ class ThreadEx(threading.Thread):
         except BaseException as e:
             self.exc = e
 
+    def is_alive(self) -> bool:
+        if self.has_exception():
+            return False
+
+        return super().is_alive()
+
     def has_exception(self) -> bool:
         return self.exc is not None
 
