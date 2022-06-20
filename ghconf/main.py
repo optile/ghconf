@@ -124,7 +124,8 @@ def assemble_changedict(args: Namespace, org: Organization) -> Dict[str, ChangeS
                 capcache[modulename] = False
                 continue
 
-    pbar.close()
+    if pbar:
+        pbar.close()
     return changedict
 
 
