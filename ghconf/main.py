@@ -201,9 +201,15 @@ def apply_changedict(args: Namespace, changedict: Dict[str, ChangeSet]) -> None:
 
         for fut in cs_futures:
             _res = fut.result()  # type: Tuple[Dict[str, int], List[Future], List[str]]
+
+            if ghcgithub.killswitch.is_set():
+                raise KillSwitchReceived()
+
             csres, subfuts, lines = _res
             for sf in subfuts:
                 lines.append(sf.result())
+                if ghcgithub.killswitch.is_set():
+                    raise KillSwitchReceived()
 
             for k, v in csres.items():
                 if k in results:
@@ -451,11 +457,11 @@ def app() -> None:
         else:
             sys.exit(e.exitcode)
     except KeyboardInterrupt:
+        print("\n\nCtrl+C break received. Exiting.")
         ghcgithub.killswitch.set()
         utils.close_ttywriter()
         mt.join()
         wt.join()
-        print("\n\nCtrl+C break received. Exiting.")
         return
 
 
